@@ -42,16 +42,36 @@ export function findSession(sessions, ident) {
   return { session };
 }
 
+// The name `run` gives a task's session: the configured prefix plus the first 6 hex digits of the task hash.
+export function sessionName(prefix, taskHash) {
+  return `${prefix}-${taskHash.slice(0, 6)}`.slice(0, 64);
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Autopilot started a session if it has the exact generated name shape or is the recorded last session.
+// A name that merely starts with the prefix (for example `autopilot-demo-investigation`) doesn't count.
 export function isOwned(session, { prefix, record }) {
-  return Boolean((prefix && session.name?.startsWith(`${prefix}-`)) || matchesRecord(session, record));
+  const generated = prefix && new RegExp(`^${escapeRegExp(prefix)}-[0-9a-f]{1,6}$`).test(session.name || '');
+  return Boolean(generated || matchesRecord(session, record));
+}
+
+// True when the session belongs to the task in the task file: it is the recorded session of this task, or it
+// carries this task's generated name, which still works when .autopilot/runtime/ has been lost.
+export function isCurrentTask(session, { prefix, record, taskHash }) {
+  if (!taskHash) return false;
+  if (record?.taskHash === taskHash && matchesRecord(session, record)) return true;
+  return Boolean(prefix) && session.name === sessionName(prefix, taskHash);
 }
 
 // active: working or waiting for input.
 // current: finished, but it belongs to the task in the task file, so `run` reports or respawns it.
 // stale: finished, and it belongs to an earlier task (or wasn't started by Autopilot).
-export function classifySession(session, { prefix, record, taskHash }) {
-  const owned = isOwned(session, { prefix, record });
-  const current = Boolean(taskHash) && record?.taskHash === taskHash && matchesRecord(session, record);
+export function classifySession(session, context) {
+  const owned = isOwned(session, context);
+  const current = isCurrentTask(session, context);
   let lifecycle = 'unknown';
   if (ACTIVE_STATES.has(session.state)) lifecycle = 'active';
   else if (FINISHED_STATES.has(session.state)) lifecycle = current ? 'current' : 'stale';
@@ -59,13 +79,15 @@ export function classifySession(session, { prefix, record, taskHash }) {
 }
 
 // Decides which background sessions `cleanup` may remove. Only finished, Autopilot-owned sessions of an
-// earlier task qualify; everything else is kept with a reason.
+// earlier task qualify; everything else is kept with a reason. Without a task file the current task can't be
+// identified, so nothing is removed.
 export function planCleanup(sessions, context) {
   const remove = [];
   const keep = [];
   for (const session of sessions.filter(isBackground)) {
     const info = classifySession(session, context);
-    if (!info.owned) keep.push({ session, reason: 'not started by Autopilot' });
+    if (!context.taskHash) keep.push({ session, reason: 'task file not found, so the current task is unknown' });
+    else if (!info.owned) keep.push({ session, reason: 'not started by Autopilot' });
     else if (info.lifecycle === 'active') keep.push({ session, reason: `still ${session.state}` });
     else if (info.lifecycle === 'current') keep.push({ session, reason: 'belongs to the current task' });
     else if (info.lifecycle === 'stale') remove.push({ session, reason: `${session.state}, earlier task` });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifySession, findSession, isBackground, matchesRecord, planCleanup } from '../src/sessions.js';
+import { classifySession, findSession, isBackground, isCurrentTask, isOwned, matchesRecord, planCleanup, sessionName } from '../src/sessions.js';
 
 const bg = (id, state, name = `autopilot-demo-${id.slice(0, 6)}`) => ({
   id,
@@ -59,6 +59,37 @@ test('classifySession labels active, current and stale sessions', () => {
   // Once the task file changes, the old record's session is no longer current.
   assert.equal(classifySession(bg('cccccccc', 'done'), { ...context, taskHash: 'task-3' }).lifecycle, 'stale');
   assert.equal(classifySession(bg('eeeeeeee', 'done', 'my own session'), context).owned, false);
+});
+
+test('ownership needs the exact generated name shape or the saved record', () => {
+  const context = { prefix: 'autopilot-demo', record: { id: 'cccccccc' }, taskHash: 'abc123def' };
+  assert.equal(sessionName('autopilot-demo', '9e18f9f543b8'), 'autopilot-demo-9e18f9');
+  assert.equal(isOwned(bg('aaaaaaaa', 'done', 'autopilot-demo-9e18f9'), context), true);
+  assert.equal(isOwned(bg('aaaaaaaa', 'done', 'autopilot-demo-investigation'), context), false);
+  assert.equal(isOwned(bg('aaaaaaaa', 'done', 'autopilot-demo-9e18f9-copy'), context), false);
+  assert.equal(isOwned(bg('aaaaaaaa', 'done', 'autopilot-demox-9e18f9'), context), false);
+  assert.equal(isOwned(bg('cccccccc', 'done', 'renamed by the user'), context), true, 'the recorded session stays owned');
+  assert.equal(isOwned(bg('aaaaaaaa', 'done', 'x-9e18f9'), { prefix: 'x.y', record: null }), false, 'the prefix is matched literally');
+});
+
+test('the current task is recognised by its generated name when the runtime record is gone', () => {
+  const context = { prefix: 'autopilot-demo', record: null, taskHash: '9e18f9f543b8' };
+  assert.equal(classifySession(bg('aaaaaaaa', 'done', 'autopilot-demo-9e18f9'), context).lifecycle, 'current');
+  assert.equal(classifySession(bg('bbbbbbbb', 'done', 'autopilot-demo-111111'), context).lifecycle, 'stale');
+  assert.equal(isCurrentTask(bg('aaaaaaaa', 'stopped', 'autopilot-demo-9e18f9'), { ...context, taskHash: null }), false);
+});
+
+test('planCleanup removes nothing when the task file is missing', () => {
+  const sessions = [bg('aaaaaaaa', 'done'), bg('bbbbbbbb', 'failed')];
+  const { remove, keep } = planCleanup(sessions, { prefix: 'autopilot-demo', record: null, taskHash: null });
+  assert.deepEqual(remove, []);
+  assert.deepEqual(keep.map(({ reason }) => reason), ['task file not found, so the current task is unknown', 'task file not found, so the current task is unknown']);
+});
+
+test('planCleanup keeps a finished session whose name only starts with the prefix', () => {
+  const { remove, keep } = planCleanup([bg('aaaaaaaa', 'done', 'autopilot-demo-investigation')], { prefix: 'autopilot-demo', record: null, taskHash: 'fff' });
+  assert.deepEqual(remove, []);
+  assert.equal(keep[0].reason, 'not started by Autopilot');
 });
 
 test('planCleanup only removes finished Autopilot sessions of earlier tasks', () => {

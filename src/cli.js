@@ -24,7 +24,7 @@ import {
   PLUGIN_SETUP_IN_CLAUDE,
   pluginSessionSettings,
 } from './codex-plugin.js';
-import { classifySession, findSession, isBackground, matchesRecord, planCleanup } from './sessions.js';
+import { classifySession, findSession, isBackground, isCurrentTask, planCleanup, sessionName } from './sessions.js';
 
 const { version: VERSION } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
@@ -655,7 +655,8 @@ async function run(root) {
   const sessions = await listSessions(root, true);
   if (!sessions.ok) throw new Error(sessions.error);
   const record = await runtimeRecord(root);
-  const sameSession = record?.taskHash === hash ? sessions.sessions.find((session) => matchesRecord(session, record)) : null;
+  const prefix = config.claude?.sessionNamePrefix || 'autopilot';
+  const sameSession = sessions.sessions.find((session) => isBackground(session) && isCurrentTask(session, { prefix, record, taskHash: hash }));
 
   if (sameSession) {
     if (sameSession.state === 'working') {
@@ -672,6 +673,7 @@ async function run(root) {
     }
     if (sameSession.state === 'failed' || sameSession.state === 'stopped') {
       console.log(`Respawning existing Autopilot session ${sameSession.id} for the unchanged task...`);
+      describeReviewSetup(config);
       await writeSessionSettings(root, config);
       const result = await exec('claude', ['respawn', sameSession.id], { cwd: root, stream: true, timeoutMs: 30000 });
       if (result.code !== 0) throw new Error(result.stderr || result.stdout || 'Unable to respawn Claude session');
@@ -693,7 +695,7 @@ async function run(root) {
   }
 
   const branch = await currentBranch(root);
-  const name = `${config.claude?.sessionNamePrefix || 'autopilot'}-${hash.slice(0, 6)}`.slice(0, 64);
+  const name = sessionName(prefix, hash);
   const prompt = launchPrompt(config);
   const settingsPath = await writeSessionSettings(root, config);
 
@@ -776,7 +778,10 @@ async function sessionCommand(command, ident, root, interactive = false) {
   if (command === 'respawn' && session) {
     // Refresh the session's Autopilot settings so a respawned session gets this version's permissions.
     const config = await loadConfig(root).catch(() => null);
-    if (config && classifySession(session, await sessionContext(root, config)).owned) await writeSessionSettings(root, config);
+    if (config && classifySession(session, await sessionContext(root, config)).owned) {
+      describeReviewSetup(config);
+      await writeSessionSettings(root, config);
+    }
   }
   // Claude's output is streamed straight to the terminal, so it isn't printed again here.
   const result = await exec('claude', [command, id], { cwd: root, stream: !interactive, stdin: interactive ? 'inherit' : 'pipe', timeoutMs: interactive ? 0 : 60000 });

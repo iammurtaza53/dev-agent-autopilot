@@ -251,6 +251,43 @@ test('run respawns a stopped session for the unchanged task and refreshes its se
   assert.deepEqual((await settingsFile(root)).enabledPlugins, { [PLUGIN_ID]: false });
 });
 
+// The session name `run` generated for the project's current task.
+async function launchedName(t, root) {
+  const fake = useFakeCli(t);
+  await main(['run', root]);
+  const launch = bgLaunch(fake);
+  return launch.args[launch.args.indexOf('--name') + 1];
+}
+
+test('run finds the current task session by name when .autopilot/runtime/ was lost', async (t) => {
+  const root = await project(t);
+  const name = await launchedName(t, root);
+  await fs.rm(path.join(root, '.autopilot', 'runtime'), { recursive: true, force: true });
+
+  const fake = useFakeCli(t, { agents: [background('5e55e55e', 'stopped', { cwd: root, name })] });
+  await main(['run', root]);
+
+  assert.equal(bgLaunch(fake), undefined, 'no duplicate session is launched');
+  assert.ok(fake.calls.some((call) => call.line === 'claude respawn 5e55e55e'));
+});
+
+test('respawning with the plugin loaded in sessions warns about the review gate (run and resume)', async (t) => {
+  const config = { ...buildConfig('/w', 'demo'), checks: ['npm test'], codexPlugin: { loadInAutopilotSessions: true } };
+  const root = await project(t, config);
+  const name = await launchedName(t, root);
+  const agents = [background('5e55e55e', 'stopped', { cwd: root, name })];
+
+  const viaRun = useFakeCli(t, { agents });
+  await main(['run', root]);
+  assert.ok(viaRun.calls.some((call) => call.line === 'claude respawn 5e55e55e'));
+  assert.match(viaRun.text(), /Warning: codexPlugin\.loadInAutopilotSessions is true/);
+
+  const viaResume = useFakeCli(t, { agents });
+  await main(['resume', '5e55e55e', root]);
+  assert.ok(viaResume.calls.some((call) => call.line === 'claude respawn 5e55e55e'));
+  assert.match(viaResume.text(), /Warning: codexPlugin\.loadInAutopilotSessions is true/);
+});
+
 // ---------------------------------------------------------------- doctor
 
 test('doctor passes without the plugin and reports the native reviewer', async (t) => {
@@ -522,6 +559,26 @@ test('cleanup --apply removes only stale Autopilot sessions with a plain claude 
   assert.match(fake.text(), /Removed bbbbbbbb/);
   assert.match(fake.text(), /Claude kept cccccccc: kept cccccccc: worktree has unpushed commits/);
   assert.equal(process.exitCode, 1);
+});
+
+test('cleanup keeps the current task session even when .autopilot/runtime/ was lost', async (t) => {
+  const root = await project(t);
+  const name = await launchedName(t, root);
+  await fs.rm(path.join(root, '.autopilot', 'runtime'), { recursive: true, force: true });
+
+  const fake = useFakeCli(t, { agents: [background('5e55e55e', 'done', { cwd: root, name }), background('bbbbbbbb', 'done', { cwd: root })] });
+  await main(['cleanup', '--apply', root]);
+
+  assert.deepEqual(fake.calls.filter((call) => call.args[0] === 'rm').map((call) => call.line), ['claude rm bbbbbbbb']);
+  assert.match(fake.text(), /keep\s+5e55e55e .*belongs to the current task/);
+});
+
+test('cleanup never removes a user session that only shares the name prefix', async (t) => {
+  const root = await project(t);
+  const fake = useFakeCli(t, { agents: [background('aaaaaaaa', 'done', { cwd: root, name: 'autopilot-demo-investigation' })] });
+  await main(['cleanup', '--apply', root]);
+  assert.equal(fake.calls.some((call) => call.args[0] === 'rm'), false);
+  assert.match(fake.text(), /keep\s+aaaaaaaa .*not started by Autopilot/);
 });
 
 test('cleanup refuses to act when sessions cannot be listed', async (t) => {

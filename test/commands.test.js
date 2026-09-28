@@ -372,6 +372,15 @@ test('doctor warns when the plugin loads in Autopilot sessions', async (t) => {
   assert.notEqual(process.exitCode, 2);
 });
 
+test('doctor still warns about the opt-in when plugin detection is unavailable', async (t) => {
+  const root = await project(t, { ...buildConfig('/w', 'demo'), codexPlugin: { loadInAutopilotSessions: true } });
+  const fake = useFakeCli(t, { results: { 'claude plugin list': { code: 1, stderr: 'boom' } } });
+  await main(['doctor', root]);
+  const report = await doctorOutput(fake);
+  assert.equal(report.officialCodexPlugin.detection, 'unavailable');
+  assert.match(report.warnings.join('\n'), /loadInAutopilotSessions is true/);
+});
+
 test('doctor never prints the output of authentication commands', async (t) => {
   const root = await project(t);
   const fake = useFakeCli(t, {

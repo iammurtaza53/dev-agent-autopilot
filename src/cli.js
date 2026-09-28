@@ -575,7 +575,8 @@ async function doctor(root) {
 
   const warnings = [];
   if (!codexAuthenticated) warnings.push('Codex CLI is not signed in. Run: codex login');
-  if (loadPlugin && plugin.detection === 'ok' && plugin.enabled) warnings.push(PLUGIN_GATE_WARNING);
+  // Warn on the opt-in itself: detection can fail, and the gate state can't be read either way.
+  if (loadPlugin) warnings.push(PLUGIN_GATE_WARNING);
 
   const output = {
     root,

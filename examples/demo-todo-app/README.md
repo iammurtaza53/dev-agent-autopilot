@@ -47,7 +47,7 @@ Open `.autopilot/config.json` and set the checks Claude must pass:
 "checks": ["npm test"]
 ```
 
-Commit it:
+Commit it, together with the Claude rule and the `.gitignore` entries `init` added:
 
 ```bash
 git add .
@@ -71,4 +71,15 @@ dev-autopilot status
 dev-autopilot agents
 ```
 
-When it finishes you'll have a pull request with the feature, new tests, a Codex plan summary and green CI. Review it and merge it yourself.
+When it finishes you'll have a pull request with the feature, new tests, a Codex plan summary and green CI.
+
+**6. Review and merge it yourself.** Autopilot never merges. Replace `OWNER` with your GitHub user:
+
+```bash
+gh pr list --repo OWNER/demo-todo-app
+gh pr merge <number> --merge --repo OWNER/demo-todo-app
+git pull
+npm test
+```
+
+Leave out `--delete-branch`. The Claude session works in its own Git worktree under `.claude/worktrees/` and may still have the PR branch checked out, so deleting the local branch can fail even though the merge succeeds. Clean up local branches after the session has ended (see the [FAQ](../../README.md#faq)).

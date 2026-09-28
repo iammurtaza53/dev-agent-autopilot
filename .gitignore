@@ -8,6 +8,9 @@ Thumbs.db
 .autopilot/runtime/
 .autopilot/logs/
 
+# Claude Code background-session worktrees (local only; .claude/rules/ stays tracked)
+.claude/worktrees/
+
 # Private / sensitive files: never publish these
 .env
 .env.*

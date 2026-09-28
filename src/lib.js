@@ -129,16 +129,26 @@ export async function isDirty(cwd) {
   return result.stdout.trim().length > 0;
 }
 
+// `dir/`, `/dir/`, `dir` and `/dir` all ignore the directory `dir`, so they count as the same entry.
+function gitignoreKey(line) {
+  return line.trimEnd().replace(/^\//, '').replace(/\/$/, '');
+}
+
+// Appends missing entries, keeps existing content untouched, and returns the entries it added.
 export async function appendGitignore(root, entries) {
   const file = path.join(root, '.gitignore');
   let text = (await exists(file)) ? await fs.readFile(file, 'utf8') : '';
-  const lines = new Set(text.split(/\r?\n/));
+  const keys = new Set(text.split(/\r?\n/).map(gitignoreKey));
+  const added = [];
   for (const entry of entries) {
-    if (lines.has(entry)) continue;
+    const key = gitignoreKey(entry);
+    if (keys.has(key)) continue;
     text += `${text && !text.endsWith('\n') ? '\n' : ''}${entry}\n`;
-    lines.add(entry);
+    keys.add(key);
+    added.push(entry);
   }
-  await fs.writeFile(file, text, 'utf8');
+  if (added.length) await fs.writeFile(file, text, 'utf8');
+  return added;
 }
 
 export function parseBackgroundId(output) {

@@ -20,6 +20,11 @@ const CONFIG_FILE = '.autopilot/config.json';
 const RUNTIME_DIR = '.autopilot/runtime';
 const LAST_SESSION_FILE = '.autopilot/runtime/last-session.json';
 const CLAUDE_RULE_FILE = '.claude/rules/dev-autopilot.md';
+const CLAUDE_WORKTREES_DIR = '.claude/worktrees';
+
+// Local-only data: Autopilot runtime state and Claude Code background-session worktrees.
+// Never ignore all of .claude/, because the committed rule under .claude/rules/ must stay tracked.
+const GITIGNORE_ENTRIES = [`${RUNTIME_DIR}/`, `${CLAUDE_WORKTREES_DIR}/`];
 
 const COMMON_ALLOWED_TOOLS = [
   'Read',
@@ -90,7 +95,7 @@ Codex plans. Claude Code builds. Codex reviews. You merge.
 
 Commands:
   init [path]                   Onboard a project (writes .autopilot/config.json + Claude rule)
-  upgrade [path]                Refresh the Claude rule and add new config sections (e.g. planner)
+  upgrade [path]                Refresh the Claude rule and .gitignore; add new config sections (e.g. planner)
   doctor [path]                 Verify Git, gh, Claude Code background agents and Codex CLI
   run [path]                    Start or resume the project's Claude background session
   status [path]                 Show Claude background sessions for the project
@@ -232,16 +237,21 @@ async function ensureRule(root) {
   await fs.writeFile(file, ruleText(), 'utf8');
 }
 
+async function ensureGitignore(root) {
+  const added = await appendGitignore(root, GITIGNORE_ENTRIES);
+  if (added.length) console.log(`Added to .gitignore: ${added.join(', ')}`);
+}
+
 async function init(root) {
   const configFile = path.join(root, CONFIG_FILE);
   if (await exists(configFile)) throw new Error(`${CONFIG_FILE} already exists. Use migrate-v1 for v0.1 projects.`);
   await writeJson(configFile, buildConfig(root, path.basename(root)));
   await ensureRule(root);
-  await appendGitignore(root, [`${RUNTIME_DIR}/`]);
   console.log(`Created ${CONFIG_FILE}`);
   console.log(`Created ${CLAUDE_RULE_FILE}`);
+  await ensureGitignore(root);
   console.log('Next: add your test/lint/build commands to "checks" in the config, write your task in NEXT_TASK.md,');
-  console.log('and commit the config/rule through your normal PR workflow before running.');
+  console.log('and commit the config, rule and .gitignore through your normal PR workflow before running.');
 }
 
 async function upgrade(root) {
@@ -253,6 +263,7 @@ async function upgrade(root) {
   }
   await ensureRule(root);
   console.log(`Updated ${CLAUDE_RULE_FILE} to v${VERSION}.`);
+  await ensureGitignore(root);
   console.log('Review and commit the changes through your normal PR workflow before running.');
 }
 
@@ -286,7 +297,7 @@ async function migrateV1(root) {
 
   await writeJson(file, config);
   await ensureRule(root);
-  await appendGitignore(root, [`${RUNTIME_DIR}/`]);
+  await ensureGitignore(root);
 
   const oldState = path.join(root, '.autopilot/state.json');
   if (await exists(oldState)) {
@@ -298,7 +309,7 @@ async function migrateV1(root) {
   console.log('Migrated .autopilot/config.json from v1 to v2.');
   console.log(`Created ${CLAUDE_RULE_FILE}.`);
   console.log('Old v1 config/state were backed up under .autopilot/runtime/ (gitignored).');
-  console.log('Review and commit the v2 config/rule before running.');
+  console.log('Review and commit the v2 config, rule and .gitignore before running.');
 }
 
 async function installReviewer() {

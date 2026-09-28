@@ -130,7 +130,7 @@ dev-autopilot init
 - `.autopilot/config.json`: your project settings.
 - `.claude/rules/dev-autopilot.md`: the playbook Claude follows.
 
-It also adds `.autopilot/runtime/` to `.gitignore`.
+It also adds `.autopilot/runtime/` and `.claude/worktrees/` to `.gitignore`. Both hold local runtime data that should never be committed. The rest of `.claude/` is left alone, so the committed rule stays tracked.
 
 Open `.autopilot/config.json` and list the commands that prove your code works:
 
@@ -140,7 +140,7 @@ Open `.autopilot/config.json` and list the commands that prove your code works:
 
 (For other stacks: `["pytest"]`, `["go test ./..."]`, `["cargo test"]` and so on.)
 
-Commit the two files, then check everything is ready:
+Commit the two files and `.gitignore`, then check everything is ready:
 
 ```bash
 dev-autopilot doctor
@@ -161,7 +161,15 @@ dev-autopilot status    # sessions and their state
 dev-autopilot agents    # Claude Code's live agent view
 ```
 
-When the PR is ready, review it and merge it yourself. Update `NEXT_TASK.md` and run again for the next task.
+When the PR is ready, review it and merge it yourself, for example:
+
+```bash
+gh pr merge <number> --merge --repo OWNER/REPO
+```
+
+Skip `--delete-branch` here. Claude Code background sessions work in isolated Git worktrees, and one may still have the PR branch checked out, so deleting the local branch can fail even though the merge succeeds. Tidy up local branches later (see the [FAQ](#faq)).
+
+Update `NEXT_TASK.md` and run again for the next task.
 
 > **Want to see it work first?** The [demo project](examples/demo-todo-app) is a tiny Node app with a ready-made task. It takes about ten minutes.
 
@@ -182,7 +190,7 @@ Every command takes an optional project path and otherwise uses the current fold
 | `dev-autopilot attach <id>` | Jump into a session, e.g. to answer a question |
 | `dev-autopilot stop <id>` | Stop a session |
 | `dev-autopilot resume <id>` | Restart a stopped or failed session with its conversation intact |
-| `dev-autopilot upgrade` | Refresh the Claude rule after updating Autopilot |
+| `dev-autopilot upgrade` | Refresh the Claude rule and `.gitignore` after updating Autopilot |
 | `dev-autopilot install-reviewer` | Check that `codex exec` and `codex review` are available |
 | `dev-autopilot migrate-v1` | Convert a legacy v0.1 project config |
 
@@ -227,7 +235,7 @@ Autopilot runs agents unattended, so the defaults are conservative:
 - **Allow-list only.** Sessions run in `dontAsk` mode: anything not in `allowedTools` is refused instead of prompting.
 - **Human gates.** Production deploys, app-store submissions, payments, legal or financial steps, identity/2FA, production secrets, destructive data changes, DNS and physical-device testing always come back to you.
 - **Codex is read-only.** It plans in a read-only sandbox and reviews without editing files.
-- **Isolated work.** Claude Code background sessions work in their own Git worktree, not your checkout.
+- **Isolated work.** Claude Code background sessions work in their own Git worktree (under the git-ignored `.claude/worktrees/`), not your checkout.
 
 Autopilot is not a sandbox. Claude runs on your machine with your accounts and whatever you allow, so review `allowedTools` before your first run.
 
@@ -267,8 +275,11 @@ Commit or stash your changes first, so the background task starts from a known s
 **What if it gets stuck?**
 `dev-autopilot status` shows the state. If a session is blocked, `dev-autopilot attach <id>` lets you answer it. Codex review loops stop after `reviewer.maxRounds` and report a blocker instead of looping forever.
 
-**I'm upgrading from v0.2.**
-Pull the latest Autopilot, then run `dev-autopilot upgrade` in each project and commit the result. It refreshes the Claude rule and adds the Codex planner, which you can switch off.
+**Deleting the local branch after a merge fails.**
+The branch is probably still checked out in the Claude session's worktree. The merge on GitHub is unaffected. After the session has ended, `git worktree list` shows the worktree; remove it with `git worktree remove <path>`, then run `git branch -d <branch>`. If Git reports the worktree as locked, Claude Code is still holding it, so leave it for now.
+
+**I'm upgrading from an earlier version.**
+Pull the latest Autopilot, then run `dev-autopilot upgrade` in each project and commit the result. It refreshes the Claude rule, adds `.claude/worktrees/` to `.gitignore`, and adds the Codex planner if it's missing (you can switch it off).
 
 ## Contributing
 

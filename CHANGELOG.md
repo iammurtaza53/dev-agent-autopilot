@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1
+
+Maintenance release from the first real end-to-end v0.3 demo run.
+
+- `init`, `upgrade` and `migrate-v1` now add `.claude/worktrees/` to the project `.gitignore`, next to `.autopilot/runtime/`. Claude Code background sessions create their Git worktrees there. Before this fix the folder showed up as untracked content, and that also made the next `dev-autopilot run` refuse to start on a "dirty" tree. Run `dev-autopilot upgrade` in existing projects to add the entry.
+- Only `.claude/worktrees/` is ignored, never all of `.claude/`, so the committed `.claude/rules/dev-autopilot.md` stays tracked.
+- `.gitignore` updates keep existing content, skip entries that are already present (including `/dir/` and `dir` spellings) and leave an up-to-date file untouched.
+- Docs: the merge guidance now uses `gh pr merge <number> --merge --repo OWNER/REPO` without `--delete-branch`, because the PR branch may still be checked out in a Claude session's worktree. Local branch/worktree cleanup is covered separately in the FAQ. Autopilot still never merges.
+
 ## 0.3.0 (first public release)
 
 - **Codex as architect.** New `planner` config section (on by default for new projects): before writing code, Claude asks Codex for an architecture and implementation plan with `codex exec --sandbox read-only`, then summarizes it in the PR. Set `planner.enabled` to `false` to opt out. Projects without a `planner` section keep the previous behaviour.

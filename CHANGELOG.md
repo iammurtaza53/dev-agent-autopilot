@@ -17,7 +17,10 @@ OpenAI now publishes an official Codex plugin for Claude Code ([openai/codex-plu
   - Without a task file, nothing is removed. `run` also uses the name to find the current task's session.
 - `run` refreshes the session settings before respawning a stopped session, so resumed sessions get the new permissions.
 - `upgrade` switches the reviewer transport of v0.2.0-era configs (the removed MCP bridge) to `codex-cli`. Otherwise it leaves the config byte-for-byte unchanged, and it stays idempotent.
-- Fixed: the project filter for `claude agents` sessions matched sibling folders that share a prefix (for example `app` and `app2`).
+- Fixed: the project filter for `claude agents` sessions had two bugs:
+  - It matched sibling folders that share a prefix (for example `app` and `app2`).
+  - It ignored letter case on Linux, where `/work/App` and `/work/app` are different projects. It now ignores case only on Windows and macOS.
+- Fixed: a `claude.sessionNamePrefix` longer than 57 characters no longer cuts the task hash out of generated session names. The prefix is shortened instead.
 - Fixed: unknown command-line flags are now rejected instead of being ignored. Expected errors print just their message; set `DEV_AUTOPILOT_DEBUG=1` to see the stack trace.
 - Tests: a fake `claude`/`codex`/`gh` runner covers doctor, run, install-reviewer, id resolution, status, cleanup and v0.3.1 upgrades. A tracked-file privacy test checks that no runtime state, credentials, tokens or personal email addresses are committed.
 

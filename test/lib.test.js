@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { appendGitignore, exists, parseBackgroundId, readJson, runProcess, slugify } from '../src/lib.js';
+import { appendGitignore, exists, normalizePathForCompare, parseBackgroundId, readJson, runProcess, slugify } from '../src/lib.js';
 import { buildConfig, launchPrompt, main, ruleText, runtimeRecord, saveRuntimeRecord, upgrade, VERSION } from '../src/cli.js';
 
 async function tempRoot(t) {
@@ -169,6 +169,15 @@ test('the committed Claude rule stays trackable while worktrees and runtime stat
 
   assert.deepEqual(untracked.sort(), ['.autopilot/config.json', '.claude/rules/dev-autopilot.md', '.gitignore']);
   assert.doesNotMatch(await readGitignore(root), /^\/?\.claude\/?$/m);
+});
+
+test('normalizePathForCompare case-folds only on case-insensitive platforms', () => {
+  const upper = path.resolve('/work/App');
+  const lower = path.resolve('/work/app');
+  assert.equal(normalizePathForCompare(upper, 'win32'), normalizePathForCompare(lower, 'win32'));
+  assert.equal(normalizePathForCompare(upper, 'darwin'), normalizePathForCompare(lower, 'darwin'));
+  assert.notEqual(normalizePathForCompare(upper, 'linux'), normalizePathForCompare(lower, 'linux'));
+  assert.doesNotMatch(normalizePathForCompare(upper, 'linux'), /\\/);
 });
 
 test('slugify makes stable session-safe names', () => {

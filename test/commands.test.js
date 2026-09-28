@@ -122,11 +122,23 @@ test('configProblems rejects unknown transports, bad round limits and a non-bool
   assert.match(problems[2], /planner\.transport "mcp" is from Autopilot v0\.2/);
   assert.match(problems[3], /codexPlugin\.loadInAutopilotSessions must be true or false/);
 
-  for (const maxRounds of [2.5, '3', -1, null]) {
-    assert.equal(configProblems({ ...config, reviewer: { maxRounds } }).length > 0, true, `maxRounds ${maxRounds}`);
+  const clean = buildConfig('/w/app', 'app');
+  for (const maxRounds of [2.5, '3', -1, 0, null]) {
+    const found = configProblems({ ...clean, reviewer: { ...clean.reviewer, maxRounds } });
+    assert.equal(found.length, 1, `maxRounds ${maxRounds}`);
+    assert.match(found[0], /reviewer\.maxRounds must be a whole number/);
   }
   assert.deepEqual(configProblems({ version: 2, project: {} }), [], 'missing optional sections use defaults');
   assert.deepEqual(configProblems({ ...buildConfig('/w', 'a'), planner: { enabled: false, transport: 'other' } }), [], 'a disabled planner is not checked');
+});
+
+test('configProblems rejects explicit nulls instead of treating them as defaults', () => {
+  const clean = buildConfig('/w/app', 'app');
+  assert.match(configProblems({ ...clean, reviewer: { ...clean.reviewer, transport: null } })[0], /reviewer\.transport "null" is not supported/);
+  assert.match(configProblems({ ...clean, planner: { ...clean.planner, transport: null } })[0], /planner\.transport "null" is not supported/);
+  assert.match(configProblems({ ...clean, codexPlugin: { loadInAutopilotSessions: null } })[0], /must be true or false \(found null\)/);
+  const { transport, maxRounds, ...withoutValues } = clean.reviewer;
+  assert.deepEqual(configProblems({ ...clean, reviewer: withoutValues }), [], 'missing keys still take their defaults');
 });
 
 test('run refuses an invalid config before launching anything', async (t) => {

@@ -72,6 +72,16 @@ test('ownership needs the exact generated name shape or the saved record', () =>
   assert.equal(isOwned(bg('aaaaaaaa', 'done', 'x-9e18f9'), { prefix: 'x.y', record: null }), false, 'the prefix is matched literally');
 });
 
+test('generated names always keep six hash digits, even with an over-long prefix', () => {
+  const long = `autopilot-${'x'.repeat(70)}`;
+  const name = sessionName(long, '9e18f9f543b8');
+  assert.equal(name.length, 64);
+  assert.match(name, /-9e18f9$/);
+  assert.notEqual(sessionName(long, '111111aaaa'), name, 'different tasks get different names');
+  assert.equal(isOwned(bg('aaaaaaaa', 'done', name), { prefix: long, record: null }), true);
+  assert.equal(isOwned(bg('aaaaaaaa', 'done', 'autopilot-demo-abc'), { prefix: 'autopilot-demo', record: null }), false, 'fewer than six digits is not generated');
+});
+
 test('the current task is recognised by its generated name when the runtime record is gone', () => {
   const context = { prefix: 'autopilot-demo', record: null, taskHash: '9e18f9f543b8' };
   assert.equal(classifySession(bg('aaaaaaaa', 'done', 'autopilot-demo-9e18f9'), context).lifecycle, 'current');

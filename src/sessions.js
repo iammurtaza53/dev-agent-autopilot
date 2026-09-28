@@ -42,9 +42,17 @@ export function findSession(sessions, ident) {
   return { session };
 }
 
+const NAME_LIMIT = 64;
+const HASH_DIGITS = 6;
+
+// Claude session names are capped at 64 characters, so an over-long prefix is shortened rather than the hash.
+function namePrefix(prefix) {
+  return prefix.slice(0, NAME_LIMIT - HASH_DIGITS - 1);
+}
+
 // The name `run` gives a task's session: the configured prefix plus the first 6 hex digits of the task hash.
 export function sessionName(prefix, taskHash) {
-  return `${prefix}-${taskHash.slice(0, 6)}`.slice(0, 64);
+  return `${namePrefix(prefix)}-${taskHash.slice(0, HASH_DIGITS)}`;
 }
 
 function escapeRegExp(text) {
@@ -54,7 +62,7 @@ function escapeRegExp(text) {
 // Autopilot started a session if it has the exact generated name shape or is the recorded last session.
 // A name that merely starts with the prefix (for example `autopilot-demo-investigation`) doesn't count.
 export function isOwned(session, { prefix, record }) {
-  const generated = prefix && new RegExp(`^${escapeRegExp(prefix)}-[0-9a-f]{1,6}$`).test(session.name || '');
+  const generated = prefix && new RegExp(`^${escapeRegExp(namePrefix(prefix))}-[0-9a-f]{${HASH_DIGITS}}$`).test(session.name || '');
   return Boolean(generated || matchesRecord(session, record));
 }
 

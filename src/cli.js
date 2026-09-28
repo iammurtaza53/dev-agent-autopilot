@@ -288,16 +288,21 @@ function transportProblem(field, transport) {
   return `${field} "${transport}" is not supported. The only supported value is "codex-cli".`;
 }
 
+// A missing setting takes its default; an explicit value, including null, must be valid.
+function setting(value, fallback) {
+  return value === undefined ? fallback : value;
+}
+
 // Returns human-readable problems with the parts of the config that `run` relies on.
 function configProblems(config) {
   const problems = [];
-  const reviewerTransport = config.reviewer?.transport ?? 'codex-cli';
+  const reviewerTransport = setting(config.reviewer?.transport, 'codex-cli');
   if (reviewerTransport !== 'codex-cli') problems.push(transportProblem('reviewer.transport', reviewerTransport));
-  const maxRounds = config.reviewer?.maxRounds ?? DEFAULT_MAX_ROUNDS;
+  const maxRounds = setting(config.reviewer?.maxRounds, DEFAULT_MAX_ROUNDS);
   if (!Number.isInteger(maxRounds) || maxRounds < 1) {
     problems.push(`reviewer.maxRounds must be a whole number of at least 1 (found ${JSON.stringify(maxRounds)}).`);
   }
-  const plannerTransport = config.planner?.transport ?? 'codex-cli';
+  const plannerTransport = setting(config.planner?.transport, 'codex-cli');
   if (config.planner?.enabled === true && plannerTransport !== 'codex-cli') problems.push(transportProblem('planner.transport', plannerTransport));
   const loadPlugin = config.codexPlugin?.loadInAutopilotSessions;
   if (loadPlugin !== undefined && typeof loadPlugin !== 'boolean') {

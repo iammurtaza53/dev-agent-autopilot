@@ -1,0 +1,11 @@
+{
+  "name": "demo-todo-app",
+  "version": "1.0.0",
+  "description": "A tiny demo project for trying Dev Agent Autopilot end to end.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT",
+  "private": true
+}

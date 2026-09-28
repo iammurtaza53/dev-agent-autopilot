@@ -1,0 +1,20 @@
+node_modules/
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
+
+# Autopilot runtime state (session records, generated Claude settings)
+.autopilot/runtime/
+.autopilot/logs/
+
+# Private / sensitive files: never publish these
+.env
+.env.*
+.claude/settings.local.json
+*.private.*
+*.local.json
+
+# Only the public demo is published; any other (private) examples stay local.
+examples/*
+!examples/demo-todo-app/

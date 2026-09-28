@@ -1,0 +1,50 @@
+{
+  "name": "dev-agent-autopilot",
+  "version": "0.3.0",
+  "description": "A project-agnostic development orchestrator for Claude Code + Codex + GitHub CI, designed to remove the manual copy/paste loop between implementation, review, testing, and pull requests.",
+  "type": "module",
+  "bin": {
+    "dev-autopilot": "./bin/dev-autopilot.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "lint": "node --check bin/dev-autopilot.js && node --check src/lib.js && node --check src/cli.js"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "cross-spawn": "7.0.6"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "codex-cli",
+    "ai-agents",
+    "coding-agent",
+    "agentic-coding",
+    "autopilot",
+    "code-review",
+    "pull-request",
+    "developer-tools",
+    "cli"
+  ],
+  "author": "Murtaza Z. (https://github.com/iammurtaza53)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iammurtaza53/dev-agent-autopilot.git"
+  },
+  "homepage": "https://github.com/iammurtaza53/dev-agent-autopilot#readme",
+  "bugs": {
+    "url": "https://github.com/iammurtaza53/dev-agent-autopilot/issues"
+  },
+  "license": "MIT",
+  "private": true
+}

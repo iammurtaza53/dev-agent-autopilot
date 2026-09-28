@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0: official Codex plugin support and workflow hardening
+
+OpenAI now publishes an official Codex plugin for Claude Code ([openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc)). v0.4 supports it as a companion for reviews you start yourself, and keeps the native Codex CLI as Autopilot's unattended planner and reviewer. The reasons and the evidence are in [docs/codex-plugin.md](docs/codex-plugin.md): the plugin's review commands are user-invoked only (`disable-model-invocation: true`), and it has no other supported interface for unattended use.
+
+- **The plugin is switched off inside Autopilot sessions.** Session settings now include `"enabledPlugins": {"codex@openai-codex": false}`. The plugin's optional Stop-time review gate therefore can't run a second, unbounded review loop next to `reviewer.maxRounds`. Only the Autopilot session is affected; your own Claude Code sessions and settings files are untouched. Opt in with `"codexPlugin": { "loadInAutopilotSessions": true }`, and doctor and `run` then warn about the review gate.
+- **Codex stays read-only.** Sessions always deny the plugin's `codex:codex-rescue` subagent (write access by default), `/codex:rescue` and `/codex:setup`.
+- **`doctor`** now reports the Codex login (`codex login status`, exit code only), the automated reviewer (backend, command, round limit) and config problems. It also reports the official plugin: installed, enabled, version and role, found with the documented `claude plugin list --json`, or "detection unavailable" if that fails. A missing plugin never fails doctor. The plugin's review-gate state has no supported read command, so doctor says so instead of reading private files.
+- **`install-reviewer`** also checks your Codex login and looks for the plugin. By default it only prints the official install steps. The new `--install-plugin` flag runs `claude plugin marketplace add openai/codex-plugin-cc` and `claude plugin install codex@openai-codex`, but only in an interactive terminal and after you answer yes. It never enables the review gate.
+- **Config validation.** `run` and `doctor` now reject an unsupported `reviewer.transport` or `planner.transport` (including plugin values, with an explanation), a `reviewer.maxRounds` that isn't a whole number of 1 or more, and a non-boolean `codexPlugin.loadInAutopilotSessions`. There is no config schema bump: existing v0.3.x configs are valid unchanged.
+- **Codex failures are blockers.** The Claude rule now says: if `codex exec` or `codex review` fails (login, usage or credits, network), retry once, then stop and report the error. Claude must never substitute its own review. The launch prompt names the reviewer command, base branch and round limit, and the PR description gains a "Review (Codex)" summary.
+- **Session ids.** `attach`, `logs`, `stop` and `resume` accept the short `id`, the full `sessionId` or the session name, and pass Claude the short id. If nothing matches, or the match is an interactive session, the error explains which value to use.
+- **Stale sessions.** `status` now lists background sessions with an `autopilot` label (`active`, `current` or `stale`, plus owned and useId), counts interactive sessions separately and explains the ids. The new `cleanup` command lists finished Autopilot sessions from earlier tasks. `cleanup --apply` removes them with a plain `claude rm <id>`, which keeps transcripts and refuses to delete worktrees with uncommitted changes or unpushed commits. Autopilot never passes override flags or runs git cleanup itself.
+  - A session counts as Autopilot's only if it has the exact generated name (`<prefix>-<first 6 hex digits of the task hash>`) or is the recorded last session.
+  - The current task's session is recognised by that name even if `.autopilot/runtime/` was lost.
+  - Without a task file, nothing is removed. `run` also uses the name to find the current task's session.
+- `run` refreshes the session settings before respawning a stopped session, so resumed sessions get the new permissions.
+- `upgrade` switches the reviewer transport of v0.2.0-era configs (the removed MCP bridge) to `codex-cli`. Otherwise it leaves the config byte-for-byte unchanged, and it stays idempotent.
+- Fixed: the project filter for `claude agents` sessions had two bugs:
+  - It matched sibling folders that share a prefix (for example `app` and `app2`).
+  - It ignored letter case on Linux, where `/work/App` and `/work/app` are different projects. It now ignores case only on Windows and macOS.
+- Fixed: a `claude.sessionNamePrefix` longer than 57 characters no longer cuts the task hash out of generated session names. The prefix is shortened instead.
+- Fixed: unknown command-line flags are now rejected instead of being ignored. Expected errors print just their message; set `DEV_AUTOPILOT_DEBUG=1` to see the stack trace.
+- Tests: a fake `claude`/`codex`/`gh` runner covers doctor, run, install-reviewer, id resolution, status, cleanup and v0.3.1 upgrades. A tracked-file privacy test checks that no runtime state, credentials, tokens or personal email addresses are committed.
+
 ## 0.3.1
 
 Maintenance release from the first real end-to-end v0.3 demo run.

@@ -160,6 +160,8 @@ export function parseBackgroundId(output) {
   );
 }
 
-export function normalizePathForCompare(value) {
-  return path.resolve(String(value || '')).replace(/\\/g, '/').toLowerCase();
+// Windows and macOS file systems are case-insensitive by default, so paths are case-folded only there.
+export function normalizePathForCompare(value, platform = process.platform) {
+  const normalized = path.resolve(String(value || '')).replace(/\\/g, '/');
+  return platform === 'win32' || platform === 'darwin' ? normalized.toLowerCase() : normalized;
 }

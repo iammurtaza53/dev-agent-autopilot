@@ -71,7 +71,9 @@ dev-autopilot status
 dev-autopilot agents
 ```
 
-When it finishes you'll have a pull request with the feature, new tests, a Codex plan summary and green CI.
+When it finishes you'll have a pull request with the feature, new tests, a Codex plan and review summary, and green CI.
+
+Optional: if you installed OpenAI's [Codex plugin for Claude Code](https://github.com/openai/codex-plugin-cc), get a second opinion before merging. Open Claude Code on the PR branch and run `/codex:adversarial-review --base main`. Autopilot doesn't need the plugin; its own review uses the Codex CLI.
 
 **6. Review and merge it yourself.** Autopilot never merges. Replace `OWNER` with your GitHub user:
 

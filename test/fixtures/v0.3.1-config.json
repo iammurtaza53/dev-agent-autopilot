@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "project": {
+    "name": "legacy-app",
+    "baseBranch": "main",
+    "taskFile": "NEXT_TASK.md",
+    "contextFiles": [
+      "CLAUDE.md",
+      "AGENTS.md",
+      "PROJECT_STATE.md",
+      "DECISIONS.md",
+      "ARCHITECTURE.md"
+    ]
+  },
+  "claude": {
+    "background": true,
+    "sessionNamePrefix": "autopilot-legacy-app",
+    "allowedTools": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch",
+      "Agent",
+      "Task",
+      "Bash(codex *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(node *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(bun *)",
+      "Bash(python *)",
+      "Bash(pytest *)",
+      "Bash(go *)",
+      "Bash(cargo *)",
+      "Bash(dotnet *)",
+      "Bash(java *)",
+      "Bash(mvn *)",
+      "Bash(gradle *)",
+      "Bash(ls*)",
+      "Bash(cat*)",
+      "Bash(find*)",
+      "Bash(grep*)"
+    ],
+    "disallowedTools": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git clean -fd*)",
+      "Bash(gh pr merge*)",
+      "Bash(npm publish*)",
+      "Bash(pnpm publish*)",
+      "Bash(yarn publish*)",
+      "Bash(bun publish*)",
+      "Bash(cargo publish*)",
+      "Bash(dotnet nuget push*)",
+      "Bash(mvn deploy*)",
+      "Bash(gradle publish*)",
+      "Bash(eas submit*)",
+      "Bash(eas update*)"
+    ]
+  },
+  "planner": {
+    "enabled": true,
+    "transport": "codex-cli",
+    "command": "codex exec --sandbox read-only",
+    "modelPolicy": "default"
+  },
+  "reviewer": {
+    "transport": "codex-cli",
+    "command": "codex review",
+    "scope": "base",
+    "maxRounds": 3,
+    "useFreshSessionEachRound": true,
+    "modelPolicy": "default"
+  },
+  "checks": [
+    "npm test"
+  ],
+  "safety": {
+    "requireCleanStart": true,
+    "humanGates": [
+      "Pull-request merge.",
+      "Production deployment or app-store submission.",
+      "Purchases, paid-service activation, billing, banking, tax, or legal acceptance.",
+      "Identity verification, 2FA, signing credentials, production secrets, or account-owner actions.",
+      "Destructive production data changes or DNS changes.",
+      "Physical-device validation or other real-world tests that cannot be automated safely."
+    ],
+    "notes": [
+      "Do not merge pull requests."
+    ]
+  }
+}

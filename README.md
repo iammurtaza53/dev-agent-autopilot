@@ -41,7 +41,7 @@ flowchart LR
 
 1. **Codex plans** the task: approach, files to touch, risks and a test plan (read-only, it never edits code).
 2. **Claude Code implements** it and runs your real test/lint/build commands until they pass.
-3. **Codex reviews** the branch with a fresh pair of eyes. Claude fixes what it finds (up to 3 rounds).
+3. **Codex reviews** the branch with a fresh pair of eyes. Claude fixes what it finds (up to 3 rounds). If Codex can't run, Claude stops and tells you rather than reviewing its own work.
 4. **Claude Code pushes**, opens the pull request, watches GitHub CI and fixes task-related failures.
 5. **It stops for you.** Merging, deploying and anything risky stay with a human.
 
@@ -55,7 +55,21 @@ flowchart LR
 - 🚀 **Automated PRs and CI monitoring.** Claude opens the pull request, watches CI and fixes failures caused by the task.
 - ✋ **Deliberately never auto-merges.** Merges, deploys, store submissions, payments, secrets and DNS stay behind human gates.
 - ♻️ **Resumes where it left off.** Close the terminal or reboot, run `dev-autopilot run` again, and the same session picks up with its conversation intact.
-- 🪶 **Tiny on purpose.** A few hundred lines of Node that launch Claude Code's native background agents and Codex's native CLI. No custom agent runtime to break.
+- 🪶 **Small on purpose.** A small Node launcher that starts Claude Code's native background agents and uses Codex's native CLI. No custom agent runtime to break.
+
+## Who does what
+
+Claude Code and Codex can already work together without Autopilot. OpenAI publishes an official [Codex plugin for Claude Code](https://github.com/openai/codex-plugin-cc) that adds `/codex:review`, `/codex:adversarial-review` and more. Autopilot is the opinionated layer around them: it takes one task from `NEXT_TASK.md` to a CI-checked pull request, and then stops for you.
+
+| Part | Owns |
+| --- | --- |
+| **Dev Agent Autopilot** | The task lifecycle: launching and resuming the background session, the workflow rule Claude follows, per-session permissions, the bounded review loop, status and cleanup, and the human gates |
+| **Claude Code** | Background sessions and their worktrees, implementation, your checks, Git, the pull request and CI fixes |
+| **Codex CLI** | Read-only planning (`codex exec --sandbox read-only`) and the automated review loop (`codex review --base <branch>`) |
+| **Official Codex plugin** (optional) | Reviews you start yourself inside Claude Code, such as a challenge review of Autopilot's pull request with `/codex:adversarial-review --base main` |
+| **You** | The task, the review of the pull request, the merge and anything behind a human gate |
+
+**Why the automated reviewer is still the native Codex CLI.** The plugin's review commands are marked `disable-model-invocation: true`, so only a person can run them. An unattended Autopilot session is a model, and the plugin offers no other supported interface for unattended use. Autopilot therefore keeps `codex review` as its reviewer and treats the plugin as a companion for your own reviews. Autopilot also switches the plugin off inside its own background sessions. That way the plugin's optional Stop-time review gate can't start a second, unbounded review loop, and Claude can't hand code changes to Codex. The details and the evidence are in [docs/codex-plugin.md](docs/codex-plugin.md).
 
 ## The full workflow
 
@@ -95,7 +109,8 @@ Tip: keep your brief, phases and decisions in files such as `PROJECT_STATE.md`, 
 | Git | branches and commits | `git --version` |
 | [GitHub CLI](https://cli.github.com), signed in | pull requests and CI | `gh auth status` |
 | [Claude Code](https://github.com/anthropics/claude-code) with background agents (2.1.139+), signed in | the developer | `claude --version`, `claude auth status` |
-| [Codex CLI](https://github.com/openai/codex), signed in | the planner and reviewer | `codex --version` |
+| [Codex CLI](https://github.com/openai/codex), signed in | the planner and reviewer | `codex --version`, `codex login status` |
+| [Codex plugin for Claude Code](https://github.com/openai/codex-plugin-cc) (optional) | your own `/codex:review` and `/codex:adversarial-review` runs | `dev-autopilot doctor` |
 
 Your project must be a Git repository with a GitHub remote.
 
@@ -110,8 +125,19 @@ npm install
 npm link
 
 dev-autopilot --help
-dev-autopilot install-reviewer   # checks that `codex exec` and `codex review` are available
+dev-autopilot install-reviewer   # checks `codex exec`, `codex review` and your Codex login, and looks for the Codex plugin
 ```
+
+Optional: install OpenAI's Codex plugin for Claude Code for reviews you start yourself. Inside Claude Code:
+
+```text
+/plugin marketplace add openai/codex-plugin-cc
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup
+```
+
+Or run `dev-autopilot install-reviewer --install-plugin` in a terminal. It shows the two `claude plugin` commands it will run and waits for your yes. Autopilot never installs the plugin or changes its review gate on its own.
 
 Prefer your own copy? [Fork it](https://github.com/iammurtaza53/dev-agent-autopilot/fork) first and clone your fork instead.
 
@@ -161,6 +187,10 @@ dev-autopilot status    # sessions and their state
 dev-autopilot agents    # Claude Code's live agent view
 ```
 
+`status` marks each session as `active`, `current` (it finished the task in `NEXT_TASK.md`) or `stale` (it finished an earlier task). To attach, read logs, stop or resume, pass the session's `id` (such as `7c5dcf5d`). The full `sessionId` works too.
+
+Want a second opinion before you merge? If you installed the official Codex plugin, open Claude Code on the PR branch and run `/codex:adversarial-review --base main`. It's a steerable challenge review that you start yourself.
+
 When the PR is ready, review it and merge it yourself, for example:
 
 ```bash
@@ -182,17 +212,20 @@ Every command takes an optional project path and otherwise uses the current fold
 | Command | What it does |
 | --- | --- |
 | `dev-autopilot init` | Onboard a project: write the config and Claude rule |
-| `dev-autopilot doctor` | Check Git, GitHub CLI, Claude Code, Codex and your logins |
+| `dev-autopilot doctor` | Check Git, GitHub CLI, Claude Code, Codex, your logins, the reviewer and the optional Codex plugin |
 | `dev-autopilot run` | Start the task in `NEXT_TASK.md`, or resume its existing session |
-| `dev-autopilot status` | Show this project's Claude background sessions |
+| `dev-autopilot status` | Show this project's background sessions as active, current or stale |
 | `dev-autopilot agents` | Open Claude Code's native agent view |
 | `dev-autopilot logs <id>` | Show recent output from a session |
 | `dev-autopilot attach <id>` | Jump into a session, e.g. to answer a question |
 | `dev-autopilot stop <id>` | Stop a session |
 | `dev-autopilot resume <id>` | Restart a stopped or failed session with its conversation intact |
+| `dev-autopilot cleanup [--apply]` | List finished Autopilot sessions from earlier tasks; `--apply` removes them with `claude rm` |
 | `dev-autopilot upgrade` | Refresh the Claude rule and `.gitignore` after updating Autopilot |
-| `dev-autopilot install-reviewer` | Check that `codex exec` and `codex review` are available |
+| `dev-autopilot install-reviewer [--install-plugin]` | Check `codex exec`, `codex review` and your Codex login; check for the Codex plugin, or install it after you confirm |
 | `dev-autopilot migrate-v1` | Convert a legacy v0.1 project config |
+
+`<id>` is the short `id` from `dev-autopilot status`. The full `sessionId` or the session name also works.
 
 ## Configuration
 
@@ -207,7 +240,8 @@ Every command takes an optional project path and otherwise uses the current fold
   },
   "checks": ["npm run lint", "npm test"],
   "planner": { "enabled": true, "command": "codex exec --sandbox read-only" },
-  "reviewer": { "command": "codex review", "maxRounds": 3 },
+  "reviewer": { "transport": "codex-cli", "command": "codex review", "maxRounds": 3 },
+  "codexPlugin": { "loadInAutopilotSessions": false },
   "claude": { "allowedTools": ["..."], "disallowedTools": ["..."] },
   "safety": { "requireCleanStart": true, "humanGates": ["..."] }
 }
@@ -219,7 +253,9 @@ Every command takes an optional project path and otherwise uses the current fold
 | `project.contextFiles` | Docs Claude reads first (missing files are fine) |
 | `checks` | Commands that must pass before the work counts as done |
 | `planner.enabled` | Set to `false` to skip the Codex planning step |
-| `reviewer.maxRounds` | How many Codex review/fix rounds before Claude reports a blocker |
+| `reviewer.transport` | The automated reviewer backend. `codex-cli` (native `codex review`) is the only one, so there is no fallback to choose. Other values are rejected with an explanation |
+| `reviewer.maxRounds` | The maximum number of Codex review/fix rounds (a whole number, 1 or more) before Claude reports a blocker |
+| `codexPlugin.loadInAutopilotSessions` | `false` (the default, also used when the key is missing) switches the official Codex plugin off inside Autopilot's background sessions. `true` leaves it as your Claude Code settings have it. Doctor and `run` then warn that the plugin's review gate, if you enabled it, would run alongside `reviewer.maxRounds` |
 | `claude.allowedTools` | What Claude may run unattended. Add your check commands here if they aren't covered (e.g. `Bash(make *)`) |
 | `claude.disallowedTools` | Commands that are always refused |
 | `safety.requireCleanStart` | Refuse to launch from a checkout with uncommitted changes |
@@ -234,7 +270,10 @@ Autopilot runs agents unattended, so the defaults are conservative:
 - **No publishing.** `npm`/`pnpm`/`yarn`/`bun`/`cargo publish`, NuGet push, Maven deploy, Gradle publish and EAS submit/update are denied.
 - **Allow-list only.** Sessions run in `dontAsk` mode: anything not in `allowedTools` is refused instead of prompting.
 - **Human gates.** Production deploys, app-store submissions, payments, legal or financial steps, identity/2FA, production secrets, destructive data changes, DNS and physical-device testing always come back to you.
-- **Codex is read-only.** It plans in a read-only sandbox and reviews without editing files.
+- **Codex is read-only.** It plans in a read-only sandbox and reviews without editing files. Sessions also deny the Codex plugin's write-capable `codex:codex-rescue` subagent, `/codex:rescue` and `/codex:setup`.
+- **One bounded review loop.** The Codex plugin is switched off inside Autopilot sessions, so its optional Stop-time review gate can't add a second review loop on top of `reviewer.maxRounds`. This applies to that session only; your own Claude Code sessions and settings are untouched.
+- **Codex failures stop the run.** If Codex can't plan or review (not signed in, out of usage, offline), Claude reports a blocker instead of reviewing its own work.
+- **No credential handling.** Autopilot uses the logins the `claude`, `codex` and `gh` CLIs already manage. It checks them by exit code only, and never reads, prints or stores tokens.
 - **Isolated work.** Claude Code background sessions work in their own Git worktree (under the git-ignored `.claude/worktrees/`), not your checkout.
 
 Autopilot is not a sandbox. Claude runs on your machine with your accounts and whatever you allow, so review `allowedTools` before your first run.
@@ -248,8 +287,8 @@ Autopilot is a thin launcher. The heavy lifting is done by features Claude Code 
   - **Stopped or failed:** respawns it.
   - **Blocked on a question:** tells you how to attach.
   - **Done:** says so.
-  - **None yet:** launches a new Claude Code background session (`claude --bg`) with permissions generated from your config.
-- Claude follows `.claude/rules/dev-autopilot.md`, the committed playbook for planning with `codex exec`, implementing, running checks, reviewing with `codex review`, opening the PR and watching CI.
+  - **None yet:** launches a new Claude Code background session (`claude --bg`) with session settings generated from your config: the permission allow/deny lists, plus `"enabledPlugins": {"codex@openai-codex": false}` unless you opted in.
+- Claude follows `.claude/rules/dev-autopilot.md`, the committed playbook for planning with `codex exec`, implementing, running checks, reviewing with `codex review` for at most `reviewer.maxRounds` rounds, opening the PR and watching CI.
 - The session outlives your terminal. After a reboot, run `dev-autopilot run` again to resume it.
 
 ## FAQ
@@ -275,11 +314,36 @@ Commit or stash your changes first, so the background task starts from a known s
 **What if it gets stuck?**
 `dev-autopilot status` shows the state. If a session is blocked, `dev-autopilot attach <id>` lets you answer it. Codex review loops stop after `reviewer.maxRounds` and report a blocker instead of looping forever.
 
+**`status` shows both `id` and `sessionId`. Which one do I use?**
+Either. Claude Code's own `claude attach`, `logs`, `stop` and `respawn` accept only the short `id`. From v0.4, `dev-autopilot attach`, `logs`, `stop` and `resume` also accept the full `sessionId` or the session name and pass Claude the short id. If nothing matches, Autopilot tells you which value to use instead of passing the error through.
+
+**Old sessions are still listed in the agent view.**
+That's how Claude Code works: finished background sessions stay listed until you delete them. `dev-autopilot status` labels them `stale` once `NEXT_TASK.md` has moved on. `dev-autopilot cleanup` lists the finished Autopilot sessions from earlier tasks, and `dev-autopilot cleanup --apply` removes them with `claude rm <id>`. Transcripts stay available through `claude --resume`, and Claude keeps any worktree that has uncommitted changes or unpushed commits. Cleanup never touches active sessions, sessions of the current task, sessions it didn't start, or your own checkout.
+
+**Should I use `/codex:review` from the Codex plugin, or Autopilot's review?**
+Both have a place. Autopilot's unattended loop runs the native `codex review --base <branch>`, which the plugin's README describes as the same review. The plugin is for reviews you start yourself in Claude Code, especially `/codex:adversarial-review` to challenge a pull request's design before you merge. Leave the plugin's review gate (`/codex:setup --enable-review-gate`) off in Autopilot projects. Autopilot already bounds its own review loop and switches the plugin off inside its sessions. See [docs/codex-plugin.md](docs/codex-plugin.md).
+
+**Doctor says Codex is signed in, but the run stopped with a Codex error.**
+`codex login status` confirms the login, not your remaining usage or credits. When Codex can't plan or review, the session stops and reports the Codex error. Fix the account, then `dev-autopilot attach <id>` and ask Claude to continue, or run `dev-autopilot run` again.
+
 **Deleting the local branch after a merge fails.**
 The branch is probably still checked out in the Claude session's worktree. The merge on GitHub is unaffected. After the session has ended, `git worktree list` shows the worktree; remove it with `git worktree remove <path>`, then run `git branch -d <branch>`. If Git reports the worktree as locked, Claude Code is still holding it, so leave it for now.
 
 **I'm upgrading from an earlier version.**
-Pull the latest Autopilot, then run `dev-autopilot upgrade` in each project and commit the result. It refreshes the Claude rule, adds `.claude/worktrees/` to `.gitignore`, and adds the Codex planner if it's missing (you can switch it off).
+Pull the latest Autopilot, then run `dev-autopilot upgrade` in each project and commit the result:
+
+```bash
+cd dev-agent-autopilot && git pull && npm install
+cd your-project
+dev-autopilot upgrade
+dev-autopilot doctor
+git add .claude/rules/dev-autopilot.md .gitignore .autopilot/config.json
+git commit -m "chore: upgrade Dev Agent Autopilot"
+```
+
+`upgrade` refreshes the Claude rule, adds `.claude/worktrees/` to `.gitignore`, and adds the Codex planner if it's missing (you can switch it off). It's safe to run repeatedly.
+
+Upgrading from v0.3.x to v0.4 needs no config changes, and the config file is left exactly as it was. The new `codexPlugin` setting is optional, and the plugin itself isn't required. After upgrading, sessions that `run` or `resume` starts or respawns get the new settings, with the plugin switched off inside them.
 
 ## Contributing
 

@@ -235,6 +235,22 @@ test('diffManifests and renderDelta report only what changed, with exact new tex
   assert.ok(delta.bytes < after.manifest.capsuleBytes);
 });
 
+test('every project rule under .claude/rules/ is part of the fingerprint, and a changed rule is in the delta', async (t) => {
+  const { root, config } = await contextProject(t, TASK, {
+    '.claude/rules/dev-autopilot.md': '# Dev Agent Autopilot\n\nWorkflow.\n',
+    '.claude/rules/team/security.md': '# Security rules\n\nNever log tokens.\n',
+  });
+  const before = await ensureCapsule(root, config, { version: 'test' });
+  assert.equal(before.manifest.sources['.claude/rules/team/security.md'].role, 'memory');
+  assert.match(await fs.readFile(before.markdown, 'utf8'), /Already in your context[\s\S]*`\.claude\/rules\/team\/security\.md`/);
+  await write(root, '.claude/rules/team/security.md', '# Security rules\n\nNever log tokens or card numbers.\n');
+  const after = await ensureCapsule(root, config, { version: 'test' });
+  assert.notEqual(after.manifest.fingerprint, before.manifest.fingerprint);
+  const delta = renderDelta(before.manifest, after, config);
+  assert.deepEqual(delta.changedPaths, ['.claude/rules/team/security.md']);
+  assert.ok(delta.markdown.includes('Never log tokens or card numbers.'), 'project memory changes are always sent in full');
+});
+
 test('a changed instruction file is always sent in full in the delta', async (t) => {
   const { root, config } = await contextProject(t, TASK);
   const before = await ensureCapsule(root, config, { version: 'test' });

@@ -51,6 +51,23 @@ test('a clock time is read only with an explicit time zone, across daylight-savi
   assert.equal(zonedTimeToUtc({ year: 2026, month: 3, day: 29, hour: 12, minute: 0 }, 'Europe/London').toISOString(), '2026-03-29T11:00:00.000Z');
 });
 
+test('a clock time that has passed moves to the same wall time tomorrow, across a DST change', () => {
+  // 23:00 EDT on 31 October 2026; New York falls back to EST at 02:00 on 1 November.
+  const now = new Date('2026-11-01T03:00:00Z');
+  assert.equal(iso(parseResetTime('usage limit reached, resets 5pm (America/New_York)', { now })), '2026-11-01T22:00:00.000Z', '5 PM EST, not 4 PM');
+  assert.equal(iso(parseResetTime('usage limit reached, resets at 09:00 UTC', { now: NOW })), '2026-09-30T09:00:00.000Z');
+  assert.equal(iso(parseResetTime('usage limit reached, resets at 09:00 +02:00', { now: NOW })), '2026-09-30T07:00:00.000Z');
+});
+
+test('the evidence line is redacted before it can be printed or stored', () => {
+  const token = `gh${'p'}_${'Q7r'.repeat(12)}`;
+  const verdict = assessFailure(`Error: usage limit reached for token ${token}; try again in 2 hours`, { now: NOW });
+  assert.equal(verdict.kind, 'quota');
+  assert.equal(verdict.evidence.includes(token), false);
+  assert.match(verdict.evidence, /\[REDACTED GitHub token\]/);
+  assert.equal(classifyFailure(`fatal: ${token}`).evidence.includes(token), false);
+});
+
 test('a relative reset time is added to the moment the output was observed', () => {
   assert.equal(iso(parseResetTime("You've hit your usage limit. Try again in 4 days 21 hours 35 minutes.", { now: NOW })), '2026-10-04T09:35:00.000Z');
   assert.equal(iso(parseResetTime('usage limit reached, resets in 2h 15m', { now: NOW })), '2026-09-29T14:15:00.000Z');

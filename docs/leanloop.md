@@ -55,7 +55,7 @@ Inspect a capsule yourself with `dev-autopilot capsule` (size and path) or `dev-
 Runtime data lives in `.autopilot/runtime/context/` (git-ignored):
 
 - `index.json` stores each context file's section map (headings, line ranges, section hashes; no text), keyed by the file's sha256. A changed file is re-parsed automatically.
-- `capsule-<task>.md` and `capsule-<task>.json` hold the capsule and its manifest. The manifest has every source's role, status, sha256 and per-section hashes. The capsule is reused only when the context fingerprint matches. The fingerprint covers the Autopilot version, the capsule options and every source's path, status and hash. The capsule file's own hash is checked too, so a hand-edited capsule is rebuilt.
+- `capsule-<task>.md` and `capsule-<task>.json` hold the capsule and its manifest. The manifest has every source's role, status, sha256 and per-section hashes. Sources include the task, the config, the context and instruction files, and all project memory: `CLAUDE.md`, every file under `.claude/rules/`, and their `@` imports. A changed rule is therefore never reported as unchanged. The capsule is reused only when the context fingerprint matches. The fingerprint covers the Autopilot version, the capsule options and every source's path, status and hash. The capsule file's own hash is checked too, so a hand-edited capsule is rebuilt.
 - `session-<task>.json` is the manifest of what the session was actually given, which Delta Resume compares against.
 
 No LLM-generated summary is stored or used as a source of truth.

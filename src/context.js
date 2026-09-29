@@ -500,6 +500,17 @@ function memoryImports(memoryRel, text) {
   return imports;
 }
 
+// The Markdown files under .claude/rules/, which Claude Code loads as project memory, sorted.
+async function projectRules(root) {
+  const dir = path.join(root, '.claude', 'rules');
+  const entries = await fs.readdir(dir, { recursive: true, withFileTypes: true }).catch(() => []);
+  return entries
+    .filter((entry) => entry.isFile() && /\.md$/i.test(entry.name))
+    .map((entry) => normalizeRel(path.relative(root, path.join(entry.parentPath ?? entry.path, entry.name))))
+    .filter(Boolean)
+    .sort();
+}
+
 export function isAutoLoadedPath(rel) {
   return rel === 'CLAUDE.md' || rel === '.claude/CLAUDE.md' || /^\.claude\/rules\/.+\.md$/i.test(rel);
 }
@@ -606,12 +617,14 @@ export async function collectContext(root, config, { runGit = git, options = con
   const contextRels = contextFilesOf(config).map((item) => normalizeRel(item) || String(item));
   const always = parseAlwaysInclude(options.alwaysInclude);
   const instructionRels = options.instructionFiles.map((item) => normalizeRel(item) || String(item));
-  const baseRels = [taskRel, CONFIG_FILE, RULE_FILE, 'CLAUDE.md', '.claude/CLAUDE.md', ...contextRels, ...instructionRels, ...always.map((item) => item.file).filter(Boolean)];
+  // Every project rule Claude Code loads is part of the context, so a changed rule is never reported as unchanged.
+  const ruleRels = await projectRules(root);
+  const baseRels = [taskRel, CONFIG_FILE, RULE_FILE, ...ruleRels, 'CLAUDE.md', '.claude/CLAUDE.md', ...contextRels, ...instructionRels, ...always.map((item) => item.file).filter(Boolean)];
   let sources = await loadSources(root, baseRels, { runGit });
 
   // Files imported from project memory are loaded by Claude Code too.
   const imports = new Set();
-  const queue = ['CLAUDE.md', '.claude/CLAUDE.md'];
+  const queue = ['CLAUDE.md', '.claude/CLAUDE.md', ...ruleRels];
   for (let depth = 0; depth < 5 && queue.length; depth += 1) {
     const found = [];
     for (const rel of queue.splice(0)) {
@@ -638,7 +651,7 @@ export async function collectContext(root, config, { runGit = git, options = con
   assign(taskRel, 'task');
   assign(CONFIG_FILE, 'config');
   const autoLoaded = (rel) => isAutoLoadedPath(rel) || imports.has(rel);
-  for (const rel of [RULE_FILE, 'CLAUDE.md', '.claude/CLAUDE.md', ...imports]) if (sources.get(rel)?.status === 'ok') assign(rel, 'memory');
+  for (const rel of [RULE_FILE, ...ruleRels, 'CLAUDE.md', '.claude/CLAUDE.md', ...imports]) if (sources.get(rel)?.status === 'ok') assign(rel, 'memory');
   for (const rel of instructionRels) assign(rel, autoLoaded(rel) ? 'memory' : 'instruction');
   for (const rel of contextRels) assign(rel, autoLoaded(rel) ? 'memory' : 'context');
   for (const item of always) if (item.file) assign(item.file, autoLoaded(item.file) ? 'memory' : 'context');

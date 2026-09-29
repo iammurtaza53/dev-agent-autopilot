@@ -532,6 +532,51 @@ test('a due ticket is cancelled when the task was replaced, completed, stopped o
   });
 });
 
+test('a changed project rule is never reported as unchanged on resume', async (t) => {
+  const root = await leanProject(t);
+  await write(root, '.claude/rules/payments.md', '# Payments rules\n\nNever refund without an audit event.\n');
+  await commit(root, 'rule');
+  const session = await launched(t, root);
+  await write(root, '.claude/rules/payments.md', '# Payments rules\n\nNever refund without an audit event and a reason.\n');
+  await commit(root, 'rule change');
+  const fake = useFakeCli(t, { agents: [session] });
+  await main(['run', root]);
+  const prompt = resumeCall(fake).args[3];
+  assert.doesNotMatch(prompt, /unchanged since you read them/);
+  assert.match(prompt, /these context sources changed since you read them: \.claude\/rules\/payments\.md/);
+  const delta = await fs.readFile(/Read the delta at (.+?\.md)/.exec(prompt)[1], 'utf8');
+  assert.ok(delta.includes('Never refund without an audit event and a reason.'));
+});
+
+test('quota evidence is redacted in the agent output, the ticket and the task state', async (t) => {
+  const token = `gh${'p'}_${'Zz9'.repeat(12)}`;
+  const { root, out } = await quotaReview(t, { autoResume: true, stderr: `ERROR: usage limit reached (auth ${token}). Try again in 2 hours.` });
+  assert.equal(out.includes(token), false);
+  assert.match(out, /\[REDACTED GitHub token\]/);
+  for (const file of ['resume-ticket.json', 'task-state.json', 'efficiency.jsonl']) {
+    assert.equal((await fs.readFile(runtime(root, file), 'utf8')).includes(token), false, file);
+  }
+});
+
+test('the resume lock treats a just-created, still-empty lock as held and reclaims only stale ones', async (t) => {
+  const root = await tempRoot(t);
+  const { acquireLock } = await import('../src/tickets.js');
+  const lock = runtime(root, 'resume.lock');
+  await fs.mkdir(path.dirname(lock), { recursive: true });
+  await fs.writeFile(lock, '');
+  assert.equal(await acquireLock(root, new Date()), null, 'an empty fresh lock is another process that has not written it yet');
+  const old = new Date(Date.now() - 20 * 60 * 1000);
+  await fs.utimes(lock, old, old);
+  const release = await acquireLock(root, new Date());
+  assert.equal(typeof release, 'function', 'a stale empty lock is reclaimed');
+  assert.equal(await acquireLock(root, new Date()), null, 'the new holder (this live process) keeps it');
+  await release();
+  await fs.writeFile(lock, JSON.stringify({ pid: 999999, at: new Date().toISOString() }));
+  const reclaimed = await acquireLock(root, new Date());
+  assert.equal(typeof reclaimed, 'function', 'a lock of a process that is gone is reclaimed');
+  await reclaimed();
+});
+
 test('dev-autopilot stop cancels a pending quota resume for that task', async (t) => {
   const { root, session } = await quotaReview(t, { autoResume: true });
   const fake = useFakeCli(t, { agents: [{ ...session, state: 'done', status: 'idle' }] });

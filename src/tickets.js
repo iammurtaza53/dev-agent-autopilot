@@ -85,8 +85,12 @@ export async function acquireLock(root, now = new Date()) {
     } catch (error) {
       if (error?.code !== 'EEXIST') throw error;
       const held = await readJsonSafe(file);
-      const age = held?.at ? now.getTime() - new Date(held.at).getTime() : Infinity;
-      if (age < LOCK_STALE_MS && processAlive(held?.pid)) return null;
+      const stat = await fs.stat(file).catch(() => null);
+      if (!stat) continue; // released meanwhile
+      // A lock whose content isn't written yet was created a moment ago by another process: it is held until its
+      // file is stale. A written lock is held while it is recent and its process is alive.
+      const fresh = held?.at ? now.getTime() - new Date(held.at).getTime() < LOCK_STALE_MS : Date.now() - stat.mtimeMs < LOCK_STALE_MS;
+      if (fresh && (!held || processAlive(held.pid))) return null;
       await fs.rm(file, { force: true });
     }
   }

@@ -1,6 +1,6 @@
 // Classifies a failed Claude or Codex command from its own output, and reads a usage-limit reset time only when
 // the output states one explicitly. Nothing is inferred from plan types, and nothing is guessed.
-import { stripAnsi } from './lib.js';
+import { redactSecrets, stripAnsi } from './lib.js';
 
 export const DEFAULT_QUOTA = Object.freeze({ autoResume: false, graceMinutes: 2 });
 const MAX_HORIZON_MS = 8 * 24 * 60 * 60 * 1000;
@@ -84,16 +84,21 @@ const PATTERNS = [
   ]],
 ];
 
+// The one line shown as evidence, with credential-like values redacted before it is printed or stored.
+function evidenceOf(line) {
+  return redactSecrets(line.trim()).slice(0, 240);
+}
+
 export function classifyFailure(text) {
   const clean = stripAnsi(text);
   const lines = clean.split('\n');
   for (const [kind, patterns] of PATTERNS) {
     for (const pattern of patterns) {
       const line = lines.find((item) => pattern.test(item));
-      if (line) return { kind, evidence: line.trim().slice(0, 240) };
+      if (line) return { kind, evidence: evidenceOf(line) };
     }
   }
-  return { kind: 'other', evidence: (lines.find((item) => item.trim()) || '').trim().slice(0, 240) };
+  return { kind: 'other', evidence: evidenceOf(lines.find((item) => item.trim()) || '') };
 }
 
 // ---------------------------------------------------------------- reset times
@@ -229,7 +234,11 @@ function candidatesIn(line, now) {
       if (!yearText && at.getTime() < now.getTime() - 86400000) at = toInstant((year += 1), month, day);
     } else {
       at = toInstant(today.year, today.month, today.day);
-      if (at.getTime() <= now.getTime()) at = new Date(at.getTime() + 86400000);
+      if (at.getTime() <= now.getTime()) {
+        // The same wall-clock time on the next calendar day in that zone; across a DST change that isn't 24 hours.
+        const next = new Date(Date.UTC(today.year, today.month - 1, today.day + 1));
+        at = toInstant(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+      }
     }
     found.push({ at, source: `clock: ${text.trim()}` });
   }

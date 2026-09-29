@@ -13,7 +13,7 @@
   - the sections that the task's paths, identifiers, called names and numbered references point to.
 
   Every excerpt is exact text with its path, lines and sha256. The rest is indexed by line range. `CLAUDE.md` and the Autopilot rule, which Claude Code already loads as project memory, are referenced by hash instead of repeated. Credential-named and git-ignored files are never processed, and sections containing credential-like values are withheld.
-- **Context cache.** Section maps are cached by content hash. The capsule is reused only while every source hash, the options and the Autopilot version are unchanged.
+- **Context cache.** Section maps are cached by content hash. The capsule is reused only while every source hash (including every `.claude/rules/` file), the options and the Autopilot version are unchanged.
 - **Delta Resume.** `run` and `resume` continue a stopped or failed session of the current task with `claude --bg --resume <sessionId>` (verified on Claude Code 2.1.284) instead of `claude respawn`. The message says:
   - the context is unchanged, so don't reread it;
   - or here is a delta with only the changed sections;
@@ -55,7 +55,7 @@
   - Sessions get five extra allow rules for the LeanLoop helpers, and nothing else of `dev-autopilot`.
   - `doctor` reports LeanLoop and warns (without failing) when `dev-autopilot` is not on PATH or the committed rule is from another version.
   - Ticket notices go to stderr, so `status` output stays pure JSON.
-- **Tests.** 193 tests, including:
+- **Tests.** 200 tests, including:
   - capsule selection, mandatory context, provenance, secrets and cache invalidation;
   - Delta Resume (unchanged, changed context, changed task, lost runtime, stale and multiple sessions);
   - quiet checks on real processes, including worktrees and timeouts;

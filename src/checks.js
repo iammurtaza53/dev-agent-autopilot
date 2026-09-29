@@ -127,10 +127,19 @@ export function runLogged(command, { cwd, env = process.env, logFile, timeoutMs 
       return;
     }
     unforward = forwardSignals(child);
+    // Honour backpressure: while the log file can't keep up, stop reading from the check instead of buffering
+    // its output in memory.
     const onData = (chunk) => {
       bytes += chunk.length;
-      out.write(chunk);
+      if (!out.write(chunk)) {
+        child.stdout.pause();
+        child.stderr.pause();
+      }
     };
+    out.on('drain', () => {
+      child.stdout.resume();
+      child.stderr.resume();
+    });
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
     child.on('error', (error) => finish(127, error.message));

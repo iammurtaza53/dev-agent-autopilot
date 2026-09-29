@@ -147,6 +147,16 @@ test('normalizeChecks accepts v0.4 command strings and { name, command } objects
   ]);
 });
 
+test('runLogged keeps every byte of a fast, very large output (log backpressure)', async (t) => {
+  const root = await tempRoot(t);
+  const logFile = path.join(root, 'big.log');
+  await fs.writeFile(path.join(root, 'big.js'), "const line = 'x'.repeat(1023) + '\\n';\nfor (let i = 0; i < 12 * 1024; i += 1) process.stdout.write(line);\n", 'utf8');
+  const result = await runLogged('node big.js', { cwd: root, logFile });
+  assert.equal(result.code, 0);
+  assert.equal(result.bytes, 12 * 1024 * 1024);
+  assert.equal((await fs.stat(logFile)).size, 12 * 1024 * 1024);
+});
+
 test('runLogged stops a check that exceeds its timeout and records why', async (t) => {
   const root = await tempRoot(t);
   const logFile = path.join(root, 'slow.log');
@@ -232,8 +242,10 @@ test('inside a linked worktree, checks run in the worktree and their state lands
   await gitIn(root, ['worktree', 'add', '-q', '-b', 'task-1', worktree]);
   t.after(() => gitIn(root, ['worktree', 'remove', '--force', worktree]).catch(() => {}));
   const roots = await resolveRoots(path.join(worktree, 'src-does-not-exist', '..'));
-  assert.equal(path.resolve(roots.workRoot).toLowerCase(), path.resolve(await fs.realpath(worktree)).toLowerCase());
-  assert.equal(path.resolve(roots.stateRoot).toLowerCase(), path.resolve(await fs.realpath(root)).toLowerCase());
+  // Compare real paths: macOS temp folders live under /private, and Windows runners may use 8.3 short names.
+  const real = async (value) => (await fs.realpath(value)).toLowerCase();
+  assert.equal(await real(roots.workRoot), await real(worktree));
+  assert.equal(await real(roots.stateRoot), await real(root));
 
   useFakeCli(t);
   t.mock.method(process.stdout, 'write', () => true);

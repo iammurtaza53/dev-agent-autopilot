@@ -92,6 +92,32 @@ test('an unchanged tree reuses a pass; any change, --force or an earlier failure
   assert.equal(again.results[0].status, 'fail', 'a failure is never reused');
 });
 
+test('a reused pass keeps the log it points to, even when old runs are pruned', async (t) => {
+  const { root, config } = await checkProject(t, ['node verbose.js 7']);
+  const limited = { ...config, leanloop: { checks: { keepRuns: 1 } } };
+  const run = (minute) => runChecks({ workRoot: root, stateRoot: root, config: limited, taskHash: 'b'.repeat(64), now: at(`2026-09-29T10:0${minute}:00Z`) });
+  const first = await run(0);
+  for (const minute of [1, 2, 3]) assert.equal((await run(minute)).results[0].status, 'reused');
+  const taskDir = path.join(root, '.autopilot', 'runtime', 'checks', 'bbbbbbbbbbbb');
+  const runs = (await fs.readdir(taskDir)).filter((name) => /^\d{8}-/.test(name));
+  assert.ok(runs.includes(first.runId), 'the referenced run survives pruning');
+  assert.ok(runs.length <= 2, `older unreferenced runs are pruned (${runs.join(', ')})`);
+  assert.equal(await fs.readFile(first.results[0].logFile, 'utf8').then((text) => text.includes('passes case 7')), true);
+
+  useFakeCli(t);
+  const writes = [];
+  t.mock.method(process.stdout, 'write', (chunk) => {
+    writes.push(String(chunk));
+    return true;
+  });
+  await writeConfig(root, limited);
+  await fs.writeFile(path.join(root, 'NEXT_TASK.md'), '# Task\n', 'utf8');
+  await main(['check', root]);
+  await main(['check', root]);
+  await main(['check', '--log', '1', root]);
+  assert.match(writes.join(''), /--- node verbose\.js 7: pass, .* ---\n[\s\S]*passes case 7/);
+});
+
 test('treeFingerprint changes with staged, unstaged and untracked content', async (t) => {
   const { root } = await checkProject(t, []);
   const base = await treeFingerprint(root);

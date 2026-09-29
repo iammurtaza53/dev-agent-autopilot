@@ -58,6 +58,7 @@ export function summarize(events, { taskHash = null } = {}) {
     unchanged: resumes.filter((event) => event.kind === 'unchanged').length,
     delta: resumes.filter((event) => event.kind === 'delta').length,
     full: resumes.filter((event) => event.kind === 'full').length,
+    respawned: resumes.filter((event) => event.kind === 'respawn').length,
     promptBytes: sum(resumes, 'promptBytes') + sum(resumes, 'deltaBytes'),
     reusedBytes: sum(resumes, 'reusedBytes'),
   };

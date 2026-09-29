@@ -286,9 +286,13 @@ function formatDuration(ms) {
   return ms < 1000 ? `${ms}ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`;
 }
 
-async function pruneRuns(taskDir, keep) {
+// Keeps the newest runs, and always the runs whose logs latest.json still points to: a reused pass refers to
+// the log of the run that produced it.
+async function pruneRuns(taskDir, keep, referenced = new Set()) {
   const names = (await fs.readdir(taskDir).catch(() => [])).filter((name) => /^\d{8}-\d{6}-\d{3}$/.test(name)).sort();
-  for (const name of names.slice(0, Math.max(0, names.length - keep))) await fs.rm(path.join(taskDir, name), { recursive: true, force: true });
+  for (const name of names.slice(0, Math.max(0, names.length - keep))) {
+    if (!referenced.has(name)) await fs.rm(path.join(taskDir, name), { recursive: true, force: true });
+  }
 }
 
 function selectChecks(checks, only) {
@@ -371,7 +375,7 @@ export async function runChecks({ workRoot, stateRoot, config, taskHash, only, b
     results: results.map(({ name, command, status, exitCode, durationMs, logFile, logBytes, compactBytes }) => ({ name, command, status, exitCode, durationMs, logFile, logBytes, compactBytes })),
   });
   await writeJsonAtomic(latestFile, latest);
-  await pruneRuns(taskDir, options.keepRuns);
+  await pruneRuns(taskDir, options.keepRuns, new Set(Object.values(latest).map((entry) => entry?.runId).filter(Boolean)));
   return { runId, output, results, status: failedCount ? 'fail' : 'pass', checksConfigured: checks.length };
 }
 

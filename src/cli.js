@@ -981,11 +981,22 @@ async function continueSession(root, config, session, { hash, state, reason = 'r
   }
   const prompt = resumePrompt({ kind, reason, config, taskHash: hash, fingerprint: capsule.manifest.fingerprint, capsulePath: capsule.markdown, deltaPath, changed, waiting: state?.waiting });
 
+  // Without `--bg --resume` the session is respawned with no message. It is running again, so a quota wait is
+  // over, but it was not given the delta: its recorded context stays as it was, and the next resume sends it.
   const respawnInstead = async (why) => {
     console.log(`${why} Respawning ${session.id} instead (the v0.4 behaviour).`);
     if (kind !== 'unchanged') console.log(`The context changed since the session read it: attach and ask it to read ${deltaPath || capsule.markdown}.`);
     const result = await exec('claude', ['respawn', session.id], { cwd: root, stream: true, timeoutMs: 30000 });
     if (result.code !== 0) throw new Error(result.stderr || result.stdout || 'Unable to respawn Claude session');
+    await updateTaskState(root, hash, (current) => ({
+      ...current,
+      status: 'working',
+      lastResume: { at: clock().toISOString(), kind: 'respawn', reason },
+      waiting: undefined,
+      blocker: undefined,
+    }), clock());
+    await recordMetric(root, { type: 'resume', task: hash, kind: 'respawn', reason, promptBytes: 0, deltaBytes: 0, reusedBytes: 0 });
+    return { id: session.id, kind: 'respawn' };
   };
   if (!session.sessionId) return respawnInstead('Claude Code did not report the full sessionId needed to send a resume message.');
   if (session.state === 'done') {

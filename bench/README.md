@@ -40,7 +40,7 @@ Choices that favour v0.4.0:
 
 ## Results
 
-Produced by `npm run bench` on this commit:
+Produced by `npm run bench` on this commit. v0.4.1's check output includes measured durations, so its totals vary by a few bytes between runs (65,686 to 65,700 bytes in our runs); the v0.4.0 side is byte-for-byte stable at 287,829 bytes.
 
 | Scenario | v0.4.0 | v0.4.1 | Change | Codex calls | Review rounds | Context read at start |
 | --- | ---: | ---: | ---: | --- | --- | --- |

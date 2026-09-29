@@ -454,6 +454,32 @@ test('a due ticket resumes the same task session through the checked path, once'
   assert.equal((await resumeFromTicket(root, { source: 'helper' })).status, 'none', 'a second helper does nothing');
 });
 
+test('a quota resume through the respawn fallback still ends the wait, but keeps the undelivered context pending', async (t) => {
+  for (const [label, agentsFor, results] of [
+    ['--bg --resume is not supported', (session) => [{ ...session, state: 'done', status: 'idle' }], { 'claude --bg --resume': { code: 1, stderr: "error: unknown option '--resume'" } }],
+    ['no sessionId is reported', (session) => [{ ...session, sessionId: undefined, state: 'stopped' }], {}],
+  ]) {
+    await t.test(label, async (st) => {
+      const { root, session } = await quotaReview(st, { autoResume: true });
+      const before = await readJsonFile(runtime(root, 'task-state.json'));
+      await fs.appendFile(path.join(root, 'ARCHITECTURE.md'), '\n## Later section\n\nAdded after the session read the context.\n');
+      await commit(root, 'docs');
+      setClock(() => new Date('2026-09-29T14:33:00Z'));
+      const fake = useFakeCli(st, { agents: agentsFor(session), results });
+      const result = await resumeFromTicket(root);
+      assert.equal(result.status, 'resumed', result.message);
+      assert.ok(fake.calls.some((call) => call.line === `claude respawn ${session.id}`));
+      assert.equal((await readJsonFile(runtime(root, 'resume-ticket.json'))).status, 'done');
+      const after = await readJsonFile(runtime(root, 'task-state.json'));
+      assert.equal(after.waiting, undefined, 'the quota wait is over');
+      assert.equal(after.status, 'working');
+      assert.equal(after.lastResume.kind, 'respawn');
+      assert.equal(after.context.fingerprint, before.context.fingerprint, 'the delta was not delivered, so the next resume still sends it');
+      assert.match(fake.text(), /The context changed since the session read it: attach and ask it to read .*delta-/);
+    });
+  }
+});
+
 test('a due ticket is cancelled when the task was replaced, completed, stopped or superseded', async (t) => {
   const scenarios = [
     ['the task file changed', async (root) => { await write(root, 'NEXT_TASK.md', '# Another task\n'); }, /task file changed/],

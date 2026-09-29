@@ -52,6 +52,11 @@ export function fakeCli(state = {}) {
       return ok(JSON.stringify(s.agents.filter((item) => all || item.kind === 'interactive' || ['working', 'blocked'].includes(item.state))));
     }
     if (command === 'claude' && args[0] === 'plugin' && args[1] === 'list') return ok(JSON.stringify(s.plugins));
+    // `claude --bg --resume <sessionId>` continues that session under its own short id.
+    if (command === 'claude' && args[0] === '--bg' && args[1] === '--resume') {
+      const id = String(args[2]).slice(0, 8);
+      return ok(`note: woke session ${id} with its saved options (--name).\nbackgrounded · ${id} · autopilot-demo\n`);
+    }
     if (command === 'claude' && args[0] === '--bg') return ok('backgrounded · 7c5dcf5d · autopilot-demo\n  claude attach 7c5dcf5d\n');
     if (args[0] === '--version') return ok(`${command} 1.0.0\n`);
     return ok('');
@@ -59,17 +64,22 @@ export function fakeCli(state = {}) {
   return { runner, calls, state: s };
 }
 
-// Installs a fake CLI and captures console output for one test; restores everything afterwards.
+const originalExitCodes = new WeakMap();
+
+// Installs a fake CLI and captures console output for one test; restores everything afterwards. A test may call
+// it more than once; the exit code is restored to its value before the first call.
 export function useFakeCli(t, state) {
   const fake = fakeCli(state);
   const output = [];
-  const previousExitCode = process.exitCode;
+  if (!originalExitCodes.has(t)) {
+    originalExitCodes.set(t, process.exitCode);
+    t.after(() => {
+      process.exitCode = originalExitCodes.get(t);
+    });
+  }
   setProcessRunner(fake.runner);
   t.mock.method(console, 'log', (...parts) => output.push(parts.join(' ')));
-  t.after(() => {
-    setProcessRunner(null);
-    process.exitCode = previousExitCode;
-  });
+  t.after(() => setProcessRunner(null));
   return { ...fake, output, text: () => output.join('\n') };
 }
 
@@ -85,4 +95,9 @@ export async function writeConfig(root, config) {
 // The exact config `dev-autopilot init` wrote in v0.3.1 (a project named "legacy-app", checks filled in).
 export async function v031Config() {
   return JSON.parse(await fs.readFile(new URL('./fixtures/v0.3.1-config.json', import.meta.url), 'utf8'));
+}
+
+// The exact config `dev-autopilot init` wrote in v0.4.0 (generated from the v0.4.0 tag, checks filled in).
+export async function v040Config() {
+  return JSON.parse(await fs.readFile(new URL('./fixtures/v0.4.0-config.json', import.meta.url), 'utf8'));
 }

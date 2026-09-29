@@ -1,0 +1,17 @@
+OpenAI Codex v0.157.1
+--------
+workdir: /work/probe
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 00000000-0000-0000-0000-000000000000
+--------
+user
+changes against 'main'
+ERROR: Your workspace is out of credits. Ask your workspace owner to refill in order to continue.
+codex
+Review was interrupted. Please re-run /review and wait for it to complete.
+ERROR: Your workspace is out of credits. Ask your workspace owner to refill in order to continue.

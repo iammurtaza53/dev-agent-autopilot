@@ -29,6 +29,89 @@ export async function writeJson(file, value) {
   await fs.writeFile(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+// Writes through a temporary file and a rename, so a reader never sees a half-written file.
+export async function writeFileAtomic(file, text) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  await fs.writeFile(temp, text, 'utf8');
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await fs.rename(temp, file);
+      return;
+    } catch (error) {
+      // Windows refuses the rename while another process has the target open; that clears quickly.
+      if (attempt >= 5 || !['EPERM', 'EACCES', 'EBUSY'].includes(error?.code)) {
+        await fs.rm(temp, { force: true });
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20 * (attempt + 1)));
+    }
+  }
+}
+
+export async function writeJsonAtomic(file, value) {
+  await writeFileAtomic(file, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+// Reads JSON that Autopilot wrote itself; a missing or unreadable file counts as absent.
+export async function readJsonSafe(file) {
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// Escape sequences (CSI, OSC and two-byte), carriage-return progress redraws and other control characters.
+const ANSI_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
+
+export function stripAnsi(text) {
+  return String(text ?? '')
+    .replace(ANSI_SEQUENCE, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[^\n]*\r(?!\n)/g, '')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
+}
+
+// High-confidence credential formats. A match is never cached, excerpted or echoed back to an agent.
+export const SECRET_PATTERNS = [
+  ['GitHub token', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})/g],
+  ['OpenAI key', /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}/g],
+  ['Anthropic key', /\bsk-ant-[A-Za-z0-9_-]{20,}/g],
+  ['AWS access key', /\bAKIA[0-9A-Z]{16}\b/g],
+  ['Slack token', /\bxox[baprs]-[A-Za-z0-9-]{10,}/g],
+  ['Google API key', /\bAIza[0-9A-Za-z_-]{35}\b/g],
+  ['npm token', /\bnpm_[A-Za-z0-9]{36}\b/g],
+  ['Stripe key', /\b[rs]k_live_[A-Za-z0-9]{20,}/g],
+  ['private key', new RegExp(`-----BEGIN [A-Z ]*PRIVATE ${'KEY'}-----[\\s\\S]*?(?:-----END [A-Z ]*PRIVATE ${'KEY'}-----|$)`, 'g')],
+];
+
+export function findSecrets(text) {
+  const found = [];
+  for (const [label, pattern] of SECRET_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(String(text ?? ''))) found.push(label);
+    pattern.lastIndex = 0;
+  }
+  return found;
+}
+
+export function redactSecrets(text) {
+  let result = String(text ?? '');
+  for (const [label, pattern] of SECRET_PATTERNS) result = result.replace(pattern, `[REDACTED ${label}]`);
+  return result;
+}
+
+export function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function byteLength(text) {
+  return Buffer.byteLength(String(text ?? ''), 'utf8');
+}
+
 export function slugify(value, max = 52) {
   return (
     String(value || 'project')
@@ -51,6 +134,7 @@ export async function runProcess(command, args = [], options = {}) {
     timeoutMs = 0,
     stream = false,
     stdin = 'pipe',
+    input,
   } = options;
 
   return await new Promise((resolve, reject) => {
@@ -60,7 +144,8 @@ export async function runProcess(command, args = [], options = {}) {
     let timer = null;
     let settled = false;
 
-    const stdio = stdin === 'inherit' ? 'inherit' : ['ignore', 'pipe', 'pipe'];
+    // `input` is written to the child's stdin; otherwise stdin is closed, like `< /dev/null`.
+    const stdio = stdin === 'inherit' ? 'inherit' : [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'];
     const child = spawn(command, args, {
       cwd,
       env,
@@ -73,6 +158,11 @@ export async function runProcess(command, args = [], options = {}) {
       child.on('error', reject);
       child.on('close', (code, signal) => resolve({ code: code ?? 1, signal, stdout: '', stderr: '', timedOut: false }));
       return;
+    }
+
+    if (input !== undefined) {
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
     }
 
     child.stdout?.on('data', (chunk) => {

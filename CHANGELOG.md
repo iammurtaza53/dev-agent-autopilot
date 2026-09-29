@@ -55,7 +55,7 @@
   - Sessions get five extra allow rules for the LeanLoop helpers, and nothing else of `dev-autopilot`.
   - `doctor` reports LeanLoop and warns (without failing) when `dev-autopilot` is not on PATH or the committed rule is from another version.
   - Ticket notices go to stderr, so `status` output stays pure JSON.
-- **Tests.** 189 tests, including:
+- **Tests.** 193 tests, including:
   - capsule selection, mandatory context, provenance, secrets and cache invalidation;
   - Delta Resume (unchanged, changed context, changed task, lost runtime, stale and multiple sessions);
   - quiet checks on real processes, including worktrees and timeouts;

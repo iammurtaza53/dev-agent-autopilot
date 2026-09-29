@@ -9,7 +9,8 @@ import { gitIn, tempRoot, useFakeCli, writeConfig } from './helpers.js';
 
 const ESC = '\u001b';
 
-// A script that prints `lines` passing lines with colour codes, then optionally fails.
+// A script that prints `lines` passing lines with colour codes, then optionally fails. It sets the exit code
+// rather than calling process.exit(), which on POSIX can drop output still queued for a pipe.
 const VERBOSE = `const [lines, fail] = process.argv.slice(2).map(Number);
 for (let i = 1; i <= lines; i += 1) console.log('${ESC}[32m✓${ESC}[39m suite > passes case ' + i);
 if (fail) {
@@ -17,9 +18,10 @@ if (fail) {
   console.error("AssertionError: expected 'held' to be 'released'");
   console.error('token ' + ['gh', 'p_', 'Z9y8'.repeat(9)].join(''));
   console.log('Tests  1 failed | ' + (lines - 1) + ' passed (' + lines + ')');
-  process.exit(3);
+  process.exitCode = 3;
+} else {
+  console.log('Tests  ' + lines + ' passed (' + lines + ')');
 }
-console.log('Tests  ' + lines + ' passed (' + lines + ')');
 `;
 
 async function checkProject(t, checks) {

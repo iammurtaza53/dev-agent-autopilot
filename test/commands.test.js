@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { PLUGIN_ID } from '../src/codex-plugin.js';
-import { buildConfig, configProblems, installReviewer, launchPrompt, main, ruleText, sessionSettings, upgrade } from '../src/cli.js';
+import { buildConfig, configProblems, installReviewer, launchPrompt, legacyLaunchPrompt, main, ruleText, sessionSettings, upgrade } from '../src/cli.js';
 import { gitIn, readConfig, tempRoot, useFakeCli, v031Config, writeConfig } from './helpers.js';
 
 const PLUGIN = { id: PLUGIN_ID, version: '1.0.6', scope: 'user', enabled: true };
@@ -24,6 +24,8 @@ async function project(t, config) {
   await gitIn(root, ['init', '-q', '-b', 'main']);
   await fs.writeFile(path.join(root, '.gitignore'), '.autopilot/runtime/\n.claude/worktrees/\n', 'utf8');
   await fs.writeFile(path.join(root, 'NEXT_TASK.md'), '# Task\n\nAdd a feature.\n', 'utf8');
+  await fs.mkdir(path.join(root, '.claude', 'rules'), { recursive: true });
+  await fs.writeFile(path.join(root, '.claude', 'rules', 'dev-autopilot.md'), ruleText(), 'utf8');
   await writeConfig(root, config || { ...buildConfig(root, 'demo'), checks: ['npm test'] });
   await gitIn(root, ['add', '-A']);
   await gitIn(root, ['commit', '-q', '-m', 'init']);
@@ -50,7 +52,10 @@ test('init writes a v2 config with the native reviewer and the plugin switched o
   const config = await readConfig(root);
   assert.equal(config.version, 2);
   assert.equal(config.reviewer.transport, 'codex-cli');
-  assert.equal(config.reviewer.maxRounds, 3);
+  assert.equal(config.reviewer.maxRounds, 2, 'v0.4.1 lowers the default cap for new projects to 2');
+  assert.deepEqual(config.reviewer.adaptive, { enabled: true });
+  assert.deepEqual(config.leanloop, { enabled: true });
+  assert.deepEqual(config.quota, { autoResume: false, graceMinutes: 2 });
   assert.deepEqual(config.codexPlugin, { loadInAutopilotSessions: false });
   assert.deepEqual(configProblems(config), []);
 });
@@ -152,14 +157,31 @@ test('run refuses an invalid config before launching anything', async (t) => {
 
 // ---------------------------------------------------------------- rule and launch prompt
 
-test('the launch prompt names the native reviewer, the base branch and the round limit', () => {
+test('the v0.4 launch prompt names the native reviewer, the base branch and the round limit', () => {
   const config = buildConfig('/w/app', 'app');
-  assert.match(launchPrompt(config), /native Codex CLI reviewer \(codex review --base main\), at most 3 rounds/);
+  config.reviewer.maxRounds = 3;
+  assert.match(legacyLaunchPrompt(config), /native Codex CLI reviewer \(codex review --base main\), at most 3 rounds/);
   config.project.baseBranch = 'develop';
   config.reviewer.maxRounds = 2;
-  const prompt = launchPrompt(config);
+  const prompt = legacyLaunchPrompt(config);
   assert.match(prompt, /codex review --base develop\), at most 2 rounds/);
   assert.match(prompt, /if Codex fails, stop and report it instead of reviewing the work yourself/);
+  assert.equal(launchPrompt(config), prompt, 'without a capsule the v0.4 prompt is used');
+  assert.equal(launchPrompt({ ...config, leanloop: { enabled: false } }, { capsulePath: '/x/capsule.md' }), prompt, 'LeanLoop off keeps the v0.4 prompt');
+});
+
+test('the LeanLoop launch prompt points at the capsule and the quiet helpers instead of the context files', () => {
+  const config = buildConfig('/w/app', 'app');
+  config.project.baseBranch = 'develop';
+  const prompt = launchPrompt(config, { capsulePath: '/w/app/.autopilot/runtime/context/capsule-abc.md' });
+  assert.match(prompt, /Context Capsule at \/w\/app\/\.autopilot\/runtime\/context\/capsule-abc\.md/);
+  assert.match(prompt, /replaces reading the configured context files/);
+  assert.match(prompt, /dev-autopilot check/);
+  assert.match(prompt, /dev-autopilot codex review \(native Codex CLI reviewer: codex review --base develop, adaptive budget from the diff, at most 2 rounds\)/);
+  assert.match(prompt, /dev-autopilot codex plan/);
+  assert.match(prompt, /if Codex fails or reports exhausted usage, stop and report it instead of reviewing the work yourself/);
+  assert.doesNotMatch(prompt, /Read \.claude\/rules/, 'the rule is project memory, not an explicit reread');
+  assert.match(launchPrompt({ ...config, planner: { enabled: false } }, { capsulePath: '/c.md' }), /do not ask Codex for a plan/);
 });
 
 test('the rule bounds the review loop, treats Codex failures as blockers and fences off the plugin', () => {
@@ -186,17 +208,26 @@ test('run launches with the native Codex reviewer and the plugin switched off in
   const settingsPath = launch.args[launch.args.indexOf('--settings') + 1];
   assert.equal(settingsPath, path.join(root, '.autopilot', 'runtime', 'claude-settings.json'));
   assert.equal(launch.args.includes('--model'), false);
-  assert.match(launch.args.at(-1), /codex review --base main\), at most 3 rounds/);
+  assert.match(launch.args.at(-1), /codex review --base main, adaptive budget from the diff, at most 2 rounds/);
+  assert.match(launch.args.at(-1), /Context Capsule at .*capsule-[0-9a-f]{12}\.md/);
 
   const settings = await settingsFile(root);
   const config = await readConfig(root);
   assert.deepEqual(settings.enabledPlugins, { [PLUGIN_ID]: false });
   assert.equal(settings.permissions.defaultMode, 'dontAsk');
-  assert.deepEqual(settings.permissions.allow, config.claude.allowedTools);
+  assert.deepEqual(settings.permissions.allow.slice(0, config.claude.allowedTools.length), config.claude.allowedTools);
+  assert.deepEqual(settings.permissions.allow.slice(config.claude.allowedTools.length), [
+    'Bash(dev-autopilot check*)',
+    'Bash(dev-autopilot codex plan*)',
+    'Bash(dev-autopilot codex review*)',
+    'Bash(dev-autopilot review-budget*)',
+    'Bash(dev-autopilot state*)',
+  ]);
+  assert.equal(settings.permissions.allow.some((rule) => /dev-autopilot (run|stop|cleanup|resume)/.test(rule)), false);
   for (const rule of [...config.claude.disallowedTools, 'Agent(codex:codex-rescue)', 'Skill(codex:rescue)', 'Skill(codex:setup)']) {
     assert.ok(settings.permissions.deny.includes(rule), rule);
   }
-  assert.match(fake.text(), /Reviewer: native Codex CLI \(codex review --base main\), at most 3 rounds\./);
+  assert.match(fake.text(), /Reviewer: native Codex CLI \(codex review --base main\), at most 2 rounds; the adaptive budget from the diff can lower that\./);
   assert.match(fake.text(), /switched off inside this Autopilot session/);
   const record = JSON.parse(await fs.readFile(path.join(root, '.autopilot', 'runtime', 'last-session.json'), 'utf8'));
   assert.equal(record.id, '7c5dcf5d');
@@ -249,7 +280,10 @@ test('run warns but still launches when codex login status fails', async (t) => 
   assert.match(fake.text(), /Codex is not signed in/);
 });
 
-test('run respawns a stopped session for the unchanged task and refreshes its settings', async (t) => {
+const bgNew = (fake) => fake.calls.find((call) => call.command === 'claude' && call.args[0] === '--bg' && call.args[1] !== '--resume');
+const bgResume = (fake) => fake.calls.find((call) => call.command === 'claude' && call.args[0] === '--bg' && call.args[1] === '--resume');
+
+test('run continues a stopped session of the unchanged task with a short message and refreshes its settings', async (t) => {
   const root = await project(t);
   useFakeCli(t);
   await main(['run', root]);
@@ -258,9 +292,26 @@ test('run respawns a stopped session for the unchanged task and refreshes its se
   const fake = useFakeCli(t, { agents: [background('7c5dcf5d', 'stopped', { cwd: root })] });
   await main(['run', root]);
 
-  assert.equal(bgLaunch(fake), undefined);
-  assert.ok(fake.calls.some((call) => call.line === 'claude respawn 7c5dcf5d'));
+  assert.equal(bgNew(fake), undefined, 'no new session');
+  const resume = bgResume(fake);
+  assert.deepEqual(resume.args.slice(0, 3), ['--bg', '--resume', '7c5dcf5d-9f1e-4c1a-8f5e-0a1b2c3d4e5f']);
+  assert.equal(resume.args.length, 4, 'no other flags, so Claude continues the same session instead of starting a copy');
+  assert.match(resume.args[3], /unchanged since you read them/);
   assert.deepEqual((await settingsFile(root)).enabledPlugins, { [PLUGIN_ID]: false });
+});
+
+test('with LeanLoop off, run respawns a stopped session exactly as v0.4 did', async (t) => {
+  const root = await project(t, { ...buildConfig('/w', 'demo'), checks: ['npm test'], leanloop: { enabled: false } });
+  const first = useFakeCli(t);
+  await main(['run', root]);
+  assert.match(bgLaunch(first).args.at(-1), /^Read \.claude\/rules\/dev-autopilot\.md, \.autopilot\/config\.json, NEXT_TASK\.md/);
+  assert.equal(await fs.stat(path.join(root, '.autopilot', 'runtime', 'context')).catch(() => null), null, 'no capsule is built');
+
+  const fake = useFakeCli(t, { agents: [background('7c5dcf5d', 'stopped', { cwd: root })] });
+  await main(['run', root]);
+  assert.ok(fake.calls.some((call) => call.line === 'claude respawn 7c5dcf5d'));
+  assert.equal(bgResume(fake), undefined);
+  assert.equal((await settingsFile(root)).permissions.allow.some((rule) => rule.includes('dev-autopilot')), false);
 });
 
 // The session name `run` generated for the project's current task.
@@ -279,8 +330,10 @@ test('run finds the current task session by name when .autopilot/runtime/ was lo
   const fake = useFakeCli(t, { agents: [background('5e55e55e', 'stopped', { cwd: root, name })] });
   await main(['run', root]);
 
-  assert.equal(bgLaunch(fake), undefined, 'no duplicate session is launched');
-  assert.ok(fake.calls.some((call) => call.line === 'claude respawn 5e55e55e'));
+  assert.equal(bgNew(fake), undefined, 'no duplicate session is launched');
+  const resume = bgResume(fake);
+  assert.equal(resume.args[2], '5e55e55e-9f1e-4c1a-8f5e-0a1b2c3d4e5f');
+  assert.match(resume.args[3], /no record of the context this session read, so read the Context Capsule at /, 'lost runtime state never reuses context blindly');
 });
 
 test('respawning with the plugin loaded in sessions warns about the review gate (run and resume)', async (t) => {
@@ -291,12 +344,12 @@ test('respawning with the plugin loaded in sessions warns about the review gate 
 
   const viaRun = useFakeCli(t, { agents });
   await main(['run', root]);
-  assert.ok(viaRun.calls.some((call) => call.line === 'claude respawn 5e55e55e'));
+  assert.equal(bgResume(viaRun).args[2], '5e55e55e-9f1e-4c1a-8f5e-0a1b2c3d4e5f');
   assert.match(viaRun.text(), /Warning: codexPlugin\.loadInAutopilotSessions is true/);
 
   const viaResume = useFakeCli(t, { agents });
   await main(['resume', '5e55e55e', root]);
-  assert.ok(viaResume.calls.some((call) => call.line === 'claude respawn 5e55e55e'));
+  assert.equal(bgResume(viaResume).args[2], '5e55e55e-9f1e-4c1a-8f5e-0a1b2c3d4e5f');
   assert.match(viaResume.text(), /Warning: codexPlugin\.loadInAutopilotSessions is true/);
 });
 

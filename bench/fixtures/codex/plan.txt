@@ -1,0 +1,30 @@
+Approach
+- Keep the change inside the modules the task names and follow the boundaries in ARCHITECTURE.md.
+- Reuse the existing helpers instead of adding new ones; no new dependencies.
+
+Files to change
+1. The module named in the task: add the new function next to the related helpers, pure where possible.
+2. The caller (route or job): call the helper, keep request/response shapes unchanged.
+3. Tests: unit tests for the pure logic, and an integration or route test for the wiring.
+4. PROJECT_STATE.md: tick the phase item; docs/operations.md if the runbook is affected.
+
+Interfaces and data shapes
+- No schema changes. Inputs and outputs keep their current types; any new function takes explicit arguments
+  (for example `now` and `limit`) so tests don't depend on the clock.
+
+Risks and edge cases
+- Idempotency: running the same work twice must not change anything the second time.
+- Batches: respect the 500-row batch limit and commit each batch separately.
+- Time: compare timestamps in UTC; test the boundary where `expires_at` equals `now`.
+- Logging: use the shared logger and the standard job summary line; don't log customer data.
+
+Test plan
+- Unit: ordering, limits and the boundary cases above.
+- Integration: run the job twice against the test database; assert the second run processes nothing.
+- Route/API: assert response bodies for both endpoints if routes change.
+
+Implementation steps
+1. Add the helper with its unit tests.
+2. Wire it into the caller; add the integration test.
+3. Update docs and PROJECT_STATE.md.
+4. Run lint, typecheck and tests; open the PR with a short summary of this plan.

@@ -9,7 +9,7 @@ OpenAI publishes an official Claude Code plugin, [`openai/codex-plugin-cc`](http
 | Job | Who does it in v0.4 | Why |
 | --- | --- | --- |
 | Planning | Native `codex exec --sandbox read-only` | The plugin has no read-only planning interface that an unattended session can call. |
-| Automated review loop | Native `codex review --base <baseBranch>`, at most `reviewer.maxRounds` rounds | The plugin's review commands are user-invoked only (see below). |
+| Automated review loop | Native `codex review --base <baseBranch>`, at most `reviewer.maxRounds` rounds (from v0.4.1 run through `dev-autopilot codex review`, which applies the [adaptive review budget](leanloop.md#adaptive-codex-review)) | The plugin's review commands are user-invoked only (see below). |
 | Manual and challenge reviews | The official plugin: `/codex:review --base main`, `/codex:adversarial-review --base main <focus>` | These are the plugin's documented, user-invoked surfaces. |
 | Checking and installing the plugin | `dev-autopilot doctor`, `dev-autopilot install-reviewer [--install-plugin]` | These use Claude Code's documented `claude plugin` CLI only. |
 | Inside Autopilot's background sessions | The plugin is switched off for that session | This prevents a second, unbounded review loop and stops Codex from writing code. |

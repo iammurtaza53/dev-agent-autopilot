@@ -1,0 +1,13 @@
+The change mostly does what the task asks, but one issue should be fixed before merge.
+
+Full review comments:
+
+- [P2] Release the whole batch in one transaction per order — src/jobs/reservation-expiry.ts:41-58
+  The job calls `release(orderId, 'expired')` for each reservation row, so an order with three expired lines is
+  released three times. `release` is idempotent, so the result is correct, but it writes three audit events and
+  three outbox events for one logical release. Group the rows by `order_id` before calling `release`, and add a
+  test with a multi-line order that asserts a single audit event.
+
+- [P3] Summary log uses the wrong key — src/jobs/reservation-expiry.ts:63
+  The summary line logs `released=<n>`; the jobs runner convention in ARCHITECTURE.md is `processed=<n>`.
+  Dashboards parse that key.

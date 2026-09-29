@@ -1,0 +1,2 @@
+I did not find any discrete, actionable issues in the changes against main. The implementation matches the task,
+the tests cover the new behaviour, and the change stays within the module boundaries.

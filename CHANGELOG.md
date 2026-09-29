@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.4.1: LeanLoop, token-efficient orchestration
+
+**LeanLoop: send evidence, not history.** v0.4.1 cuts the context and output Autopilot puts in front of Claude Code and Codex, without weakening checks, reviews or safety rules. Nothing in LeanLoop calls a model. It works with hashes, Markdown sections, git diffs and exit codes, and the repository stays the source of truth. The details are in [docs/leanloop.md](docs/leanloop.md).
+
+- **Context Capsule.** `run` no longer asks Claude to read every context file. It builds one capsule per task, without an LLM, and points Claude at it. The capsule contains:
+  - the task verbatim;
+  - the settings Claude needs, with `safety.humanGates` verbatim;
+  - instruction files (`AGENTS.md`) in full;
+  - every section under a safety heading;
+  - configured `alwaysInclude` entries and `<!-- autopilot:always -->` blocks;
+  - the sections that the task's paths, identifiers, called names and numbered references point to.
+
+  Every excerpt is exact text with its path, lines and sha256. The rest is indexed by line range. `CLAUDE.md` and the Autopilot rule, which Claude Code already loads as project memory, are referenced by hash instead of repeated. Credential-named and git-ignored files are never processed, and sections containing credential-like values are withheld.
+- **Context cache.** Section maps are cached by content hash. The capsule is reused only while every source hash, the options and the Autopilot version are unchanged.
+- **Delta Resume.** `run` and `resume` continue a stopped or failed session of the current task with `claude --bg --resume <sessionId>` (verified on Claude Code 2.1.284) instead of `claude respawn`. The message says:
+  - the context is unchanged, so don't reread it;
+  - or here is a delta with only the changed sections;
+  - or, when Autopilot has no record of what the session read, read the capsule.
+
+  A changed task file is still a new task. An idle finished session is stopped first so it continues under its own id. Older Claude Code falls back to `respawn`.
+- **Quiet Checks.** New `dev-autopilot check` runs the configured checks sequentially, stores full logs under `.autopilot/runtime/checks/`, and prints a PASS line per check, or FAIL with the exit code, the log path and a bounded, ANSI-free, redacted excerpt. `--log <check>` prints a stored log. A pass is reused for an unchanged tree; `--force` reruns. On POSIX a check runs in its own process group, so a timeout stops the whole command.
+- **Adaptive Codex review.** New `dev-autopilot codex review` runs the native `codex review --base <branch>` under a budget taken from the git diff:
+  - docs-only: 0 rounds (skipped);
+  - small low-risk: 1 round;
+  - other changes: 2 rounds;
+  - high-risk (security/auth, payments, migrations, secrets, release/deploy, dependencies, CI, build config, agent instructions, or changed lines with sensitive keywords): `reviewer.maxRounds`.
+
+  `reviewer.maxRounds` stays the strict cap, a clean round ends the loop, a budget never shrinks within a task, and failed runs don't count as rounds. Everything is configurable under `reviewer.adaptive`; code changes can't be set to 0 rounds. `dev-autopilot review-budget` explains the budget.
+- **Planning economy.** New `dev-autopilot codex plan` runs `codex exec --sandbox read-only` only when `planner.enabled` is `true`, and saves the plan per task and context so equivalent planning never runs twice. Configured Codex commands are checked: they must stay native and read-only, with no `--model`, no model config override and no sandbox bypass.
+- **Compact task state.** `.autopilot/runtime/task-state.json` records the task, session, branch, base, context fingerprint, checks, review budget, PR, CI, blocker and any quota wait. It never holds prompts or transcripts. Claude records facts with `dev-autopilot state`; `status` shows a short `task` summary.
+- **Quota resume tickets (opt-in, `quota.autoResume`, default off).**
+  - Failures are classified from the output of Autopilot's own Codex commands and of a failed Claude session's log: quota, rate limit, auth, network, refusal or usage error.
+  - A reset time is used only when the output states one explicitly: ISO time with a zone, epoch, relative time, or clock time with a zone. Anything else is rejected as ambiguous.
+  - With a stated reset, a ticket and a detached helper resume the session at reset + `graceMinutes` (default 2). Before resuming, it re-checks the project, task hash, task status, session and other active sessions.
+  - `stop` cancels a ticket; a changed task cancels it on the next command; `status` shows `waiting-quota — resume scheduled …`; after a reboot the next command re-arms the helper.
+  - Without a stated reset time the task stops with "quota exhausted; reset time unavailable for automatic scheduling".
+  - It never guesses reset times, buys credits or uses banked resets.
+- **Efficiency report.** New `dev-autopilot efficiency [--json] [--task]` reports local bytes: context against capsule, check logs against output shown, Codex transcripts against text shown, review rounds skipped, plans reused, resumes and duplicate starts avoided. Token figures are labelled estimates at 4 bytes per token. Nothing leaves the machine.
+- **Subagent and chat discipline.** The Claude rule now says to:
+  - work directly;
+  - not spawn subagents to read files, run checks, summarize documents or review work;
+  - use at most 2 concurrent subagents unless the task needs more;
+  - prefer targeted reads;
+  - not paste passing logs;
+  - keep durable state in Git, the PR or docs.
+
+  The rule is also tighter overall (6.8 KB).
+- **Benchmark.** `npm run bench` and `test/benchmark.test.js` compare v0.4.0's exact launch prompt and rule with LeanLoop on deterministic fixtures, running the real v0.4.1 code. Agent-facing text: 281.1 KB → 64.1 KB (77% less); Codex calls 8 → 6; all 21 required-information checks pass. Without check output, the reduction is 39%. These are orchestration-layer bytes, not provider-billed tokens. See [bench/README.md](bench/README.md).
+- **Compatibility.**
+  - v0.4 and v0.3.1 configs are valid unchanged, and `upgrade` leaves them byte-for-byte as they were.
+  - New projects get `reviewer.maxRounds: 2` (the old default was 3), plus `reviewer.adaptive`, `leanloop` and `quota` sections. A config without `reviewer.maxRounds` now means 2.
+  - `"leanloop": { "enabled": false }` restores v0.4.0 behaviour exactly.
+  - Sessions get five extra allow rules for the LeanLoop helpers, and nothing else of `dev-autopilot`.
+  - `doctor` reports LeanLoop and warns (without failing) when `dev-autopilot` is not on PATH or the committed rule is from another version.
+  - Ticket notices go to stderr, so `status` output stays pure JSON.
+- **Tests.** 189 tests, including:
+  - capsule selection, mandatory context, provenance, secrets and cache invalidation;
+  - Delta Resume (unchanged, changed context, changed task, lost runtime, stale and multiple sessions);
+  - quiet checks on real processes, including worktrees and timeouts;
+  - review classification on real git diffs;
+  - quota classification and reset parsing, with the real Codex out-of-credits output;
+  - tickets: due, not due, replaced, stopped, expired, reboot, the detached helper;
+  - efficiency metrics, compatibility with the v0.4.0 and v0.3.1 configs, and the benchmark.
+
 ## 0.4.0: official Codex plugin support and workflow hardening
 
 OpenAI now publishes an official Codex plugin for Claude Code ([openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc)). v0.4 supports it as a companion for reviews you start yourself, and keeps the native Codex CLI as Autopilot's unattended planner and reviewer. The reasons and the evidence are in [docs/codex-plugin.md](docs/codex-plugin.md): the plugin's review commands are user-invoked only (`disable-model-invocation: true`), and it has no other supported interface for unattended use.

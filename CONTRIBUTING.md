@@ -16,6 +16,7 @@ npm link          # makes your local copy the global `dev-autopilot`
 ```bash
 npm run lint
 npm test
+npm run bench     # LeanLoop benchmark; test/benchmark.test.js also runs it
 ```
 
 If you change the launch flow (`run`, `status`, `resume`, the Claude rule), please also try it on a real project, such as the [demo project](examples/demo-todo-app), and say what you saw in the PR.

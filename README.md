@@ -11,7 +11,7 @@ A project-agnostic development orchestrator for **Claude Code + Codex + GitHub C
 [![Node >= 22.13](https://img.shields.io/badge/node-%3E%3D22.13-brightgreen.svg)](package.json)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [Demo project](examples/demo-todo-app) · [Commands](#commands) · [FAQ](#faq)
+[Quick start](#quick-start) · [LeanLoop](#leanloop-send-evidence-not-history) · [How it works](#how-it-works) · [Demo project](examples/demo-todo-app) · [Commands](#commands) · [FAQ](#faq) · [Related projects](#related-projects)
 
 </div>
 
@@ -392,6 +392,32 @@ git commit -m "chore: upgrade Dev Agent Autopilot"
 Upgrading from v0.3.x to v0.4 needs no config changes, and the config file is left exactly as it was. The new `codexPlugin` setting is optional, and the plugin itself isn't required. After upgrading, sessions that `run` or `resume` starts or respawns get the new settings, with the plugin switched off inside them.
 
 Upgrading to v0.4.1 needs no config changes either: LeanLoop is on with its defaults, quota auto-resume stays off, and your `reviewer.maxRounds` is kept as the cap. Run `dev-autopilot upgrade` and commit the refreshed rule; `doctor` warns while the committed rule is from an older version. Make sure `dev-autopilot` is on PATH (`npm link`), because sessions call its LeanLoop helpers. To keep v0.4.0 behaviour exactly, set `"leanloop": { "enabled": false }`.
+
+## Related projects
+
+Autopilot is one of several tools built around the same idea, and some go further in particular directions. If one of them fits your workflow better, use it. This list isn't exhaustive.
+
+**Claude Code with Codex (or another reviewer) in a loop**
+
+- [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc): OpenAI's official Codex plugin for Claude Code, with `/codex:review`, `/codex:adversarial-review` and an optional Stop-time review gate. Autopilot works alongside it; see [docs/codex-plugin.md](docs/codex-plugin.md).
+- [coding-review-agent-loop](https://github.com/wwind123/coding-review-agent-loop): a local plan, code and multi-reviewer pull-request loop over your existing `claude`, `codex`, `gemini` and `gh` logins, with managed CI and resumable rounds. It is broader than Autopilot, with several reviewers and plan decomposition.
+- [claude-codex-loop](https://github.com/vibecodedapps-official/claude-codex-loop): a prompt-only Claude Code plugin. It plans, has Codex review the plan and the code, runs checks, opens the pull request and watches CI, and scales review depth by effort and risk.
+- [claude-review-loop](https://github.com/jcszymansk/claude-review-loop) and [ClaudeReviewOrchestrator](https://github.com/NorthernCaptain/ClaudeReviewOrchestrator): review loops inside one Claude session, with Codex, Claude, Cursor or Gemini as the reviewer.
+- Claude Code's own [code review](https://code.claude.com/docs/en/code-review).
+
+**Keeping command output out of the context**
+
+- [RTK](https://github.com/rtk-ai/rtk), [chop](https://pkg.go.dev/github.com/AgusRdz/chop) and similar proxies compress the output of most shell commands before the agent sees it. Autopilot's quiet checks cover only the configured checks, and keep the full log on disk.
+
+**Resuming after usage limits**
+
+- [claude-auto-continue](https://github.com/oguztecimer/claude-auto-continue) and [claude-powernap](https://pypi.org/project/claude-powernap/) resume an interactive Claude Code session when its usage limit resets.
+
+**Task-scoped context**
+
+- [Capsul](https://www.capsul.chat) builds a minimal context for each task under a token budget you set.
+
+**Where Autopilot differs.** It keeps the agents native: Claude Code background sessions and worktrees, and the native Codex CLI. On top, it adds a thin, deterministic layer: one task file and one `run` command, human gates, and LeanLoop's hash-verified Context Capsule, Delta Resume and diff-based review budget. It never merges.
 
 ## Contributing
 

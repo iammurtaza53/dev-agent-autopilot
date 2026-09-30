@@ -1,0 +1,131 @@
+<!doctype html>
+<!-- Source of docs/assets/social-preview.png (1280x640), the repository's GitHub social preview.
+     Re-render: msedge --headless --hide-scrollbars --window-size=1280,640 --screenshot=social-preview.png social-preview.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dev Agent Autopilot social preview</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --line: #30363d;
+    --text: #f0f6fc;
+    --muted: #9da7b3;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --amber: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(900px 500px at 88% -10%, rgba(88, 166, 255, 0.16), transparent 60%),
+      radial-gradient(700px 420px at -5% 110%, rgba(63, 185, 80, 0.12), transparent 60%),
+      linear-gradient(rgba(240, 246, 252, 0.035) 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, rgba(240, 246, 252, 0.035) 1px, transparent 1px) 0 0 / 40px 40px,
+      var(--bg);
+    padding: 72px 88px 64px;
+    display: flex;
+    flex-direction: column;
+  }
+  .eyebrow {
+    font-size: 21px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .eyebrow b { color: var(--green); font-weight: 700; }
+  h1 {
+    margin-top: 18px;
+    font-size: 88px;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .tagline {
+    margin-top: 22px;
+    font-size: 35px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .tagline strong { color: var(--text); font-weight: 700; }
+  .flow {
+    margin-top: 46px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 19px;
+    font-weight: 600;
+  }
+  .step {
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: var(--panel);
+    white-space: nowrap;
+  }
+  .step.codex { border-color: rgba(88, 166, 255, 0.55); }
+  .step.claude { border-color: rgba(210, 153, 34, 0.6); }
+  .step.you { border-color: rgba(63, 185, 80, 0.65); color: var(--green); }
+  .arrow { color: var(--muted); font-size: 20px; }
+  .lean {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 23px;
+  }
+  .lean .label { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .lean .chips { display: flex; gap: 10px; flex-wrap: nowrap; }
+  .chip {
+    padding: 6px 13px;
+    border-radius: 999px;
+    background: rgba(88, 166, 255, 0.1);
+    border: 1px solid rgba(88, 166, 255, 0.35);
+    color: #c9d1d9;
+    font-size: 19px;
+    white-space: nowrap;
+  }
+  .footer {
+    margin-top: 26px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 21px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="eyebrow"><b>Open source</b> · MIT · Claude Code + Codex CLI + GitHub CI</div>
+  <h1>Dev Agent Autopilot</h1>
+  <p class="tagline"><strong>Codex plans. Claude Code builds. Codex reviews. You merge.</strong></p>
+
+  <div class="flow">
+    <span class="step">NEXT_TASK.md</span><span class="arrow">→</span>
+    <span class="step codex">Codex plans</span><span class="arrow">→</span>
+    <span class="step claude">Claude builds + checks</span><span class="arrow">→</span>
+    <span class="step codex">Codex reviews</span><span class="arrow">→</span>
+    <span class="step claude">PR + CI</span><span class="arrow">→</span>
+    <span class="step you">You merge</span>
+  </div>
+
+  <div class="lean">
+    <span class="label">LeanLoop: send evidence, not history</span>
+    <span class="chips">
+      <span class="chip">Context Capsule</span>
+      <span class="chip">Delta Resume</span>
+      <span class="chip">Quiet checks</span>
+      <span class="chip">Adaptive review</span>
+    </span>
+  </div>
+
+  <div class="footer">
+    <span>github.com/iammurtaza53/dev-agent-autopilot</span>
+    <span>Windows · macOS · Linux</span>
+  </div>
+</body>
+</html>

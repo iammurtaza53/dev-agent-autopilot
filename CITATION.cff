@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If Dev Agent Autopilot supports your work or research, please cite this repository."
+title: "Dev Agent Autopilot: Claude Code and Codex development orchestrator"
+type: software
+authors:
+  - family-names: "Z."
+    given-names: "Murtaza"
+repository-code: "https://github.com/iammurtaza53/dev-agent-autopilot"
+url: "https://murtazazoaib.com/dev-agent-autopilot/"
+license: MIT
+version: 0.4.2
+date-released: 2026-10-01
+keywords:
+  - Claude Code
+  - Codex CLI
+  - AI coding agents
+  - agent orchestration
+  - AI code review
+  - developer tools

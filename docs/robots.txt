@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://murtazazoaib.com/dev-agent-autopilot/sitemap.xml

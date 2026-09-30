@@ -15,6 +15,8 @@ A project-agnostic development orchestrator for **Claude Code + Codex + GitHub C
 
 </div>
 
+![Dev Agent Autopilot: Codex plans, Claude Code builds, Codex reviews, you merge](docs/assets/social-preview.png)
+
 ---
 
 ## Stop being the glue between your AI agents

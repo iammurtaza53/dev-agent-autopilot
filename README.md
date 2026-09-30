@@ -58,6 +58,7 @@ flowchart LR
 - ✋ **Deliberately never auto-merges.** Merges, deploys, store submissions, payments, secrets and DNS stay behind human gates.
 - ♻️ **Resumes where it left off.** Close the terminal or reboot, run `dev-autopilot run` again, and the same session picks up with its conversation intact. It is told what changed since it last read the context, and only that.
 - 🧮 **LeanLoop: send evidence, not history.** Deterministic Context Capsules, quiet checks and an adaptive review budget cut the text Autopilot puts in front of the agents by 77% on our benchmark, without an extra model and without hiding a failure. [More below](#leanloop-send-evidence-not-history).
+- 🛡️ **Optional trust-handoff gate.** Switch on [HostLatch](#trust-handoff-with-hostlatch-optional) and every check run also flags agent-written changes that could later run with your authority, such as install scripts, IDE tasks, agent hooks and CI workflows.
 - 🪶 **Small on purpose.** A small Node launcher that starts Claude Code's native background agents and uses Codex's native CLI. No custom agent runtime to break.
 
 ## Who does what
@@ -114,7 +115,7 @@ Long agent runs spend much of their context on material the agent doesn't need: 
 - **Quota resume tickets (opt-in).** When Claude or Codex reports an exhausted usage limit *with* a stated reset time, Autopilot can resume the session at reset + 2 minutes, after checking it is still the same task. It never guesses a reset time, buys credits or uses banked resets.
 - **Local efficiency report.** `dev-autopilot efficiency` shows the bytes kept out of agent context. Everything stays on your machine; token figures are labelled estimates.
 
-On the [benchmark](bench/README.md) (a realistic service with 23 KB of context docs and verbose tests, compared with v0.4.0's exact prompt and rule), agent-facing text drops from 281 KB to 64 KB (77% less), and all 21 required-information checks pass. Quiet checks are the biggest part; without check output the reduction is 39%. These are orchestration-layer bytes, not provider-billed tokens.
+On the [benchmark](bench/README.md) (a realistic service with 23 KB of context docs and verbose tests, compared with v0.4.0's exact prompt and rule), agent-facing text drops from 281 KB to 66 KB (77% less), and all 21 required-information checks pass. Quiet checks are the biggest part; without check output the reduction is 38%. These are orchestration-layer bytes, not provider-billed tokens.
 
 Claude Code and Codex also compact context themselves. LeanLoop is complementary: it decides what reaches them in the first place. The full design, settings and limitations are in [docs/leanloop.md](docs/leanloop.md).
 
@@ -145,6 +146,16 @@ npm link
 
 dev-autopilot --help
 dev-autopilot install-reviewer   # checks `codex exec`, `codex review` and your Codex login, and looks for the Codex plugin
+```
+
+No clone needed: install a tagged release straight from GitHub (Node.js 22.13+). Autopilot isn't on the npm registry.
+
+```bash
+# Try a command once
+npx --yes github:iammurtaza53/dev-agent-autopilot#v0.4.2 --help
+
+# Install for real use; Autopilot sessions call `dev-autopilot` by name, so it must be on PATH
+npm install -g github:iammurtaza53/dev-agent-autopilot#v0.4.2
 ```
 
 Optional: install OpenAI's Codex plugin for Claude Code for reviews you start yourself. Inside Claude Code:
@@ -292,6 +303,7 @@ Autopilot sessions call these LeanLoop helpers themselves, and you can run them 
 | `reviewer.adaptive` | The review budget from the diff (docs-only 0, small 1, other 2, high-risk `maxRounds`). All thresholds and extra high-risk paths/keywords are configurable; `false` keeps a fixed `maxRounds`. See [docs/leanloop.md](docs/leanloop.md#adaptive-codex-review) |
 | `leanloop.enabled` | `true` (the default, also when missing) turns on the Context Capsule, Delta Resume and the quiet helpers. `false` keeps v0.4.0 behaviour exactly. Capsule and check options are in [docs/leanloop.md](docs/leanloop.md#configuration) |
 | `quota.autoResume` | `false` (the default). `true` lets Autopilot resume a task after a usage limit resets, but only when Claude or Codex states the reset time. `quota.graceMinutes` (default 2) is added to it |
+| `trustGate` | `{ "enabled": false, "command": "hostlatch", "failOn": "block" }` by default. `enabled: true` runs [HostLatch](https://github.com/iammurtaza53/hostlatch) on every `dev-autopilot check`. See [Trust handoff with HostLatch](#trust-handoff-with-hostlatch-optional) |
 | `codexPlugin.loadInAutopilotSessions` | `false` (the default, also used when the key is missing) switches the official Codex plugin off inside Autopilot's background sessions. `true` leaves it as your Claude Code settings have it. Doctor and `run` then warn that the plugin's review gate, if you enabled it, would run alongside `reviewer.maxRounds` |
 | `claude.allowedTools` | What Claude may run unattended. Add your check commands here if they aren't covered (e.g. `Bash(make *)`) |
 | `claude.disallowedTools` | Commands that are always refused |
@@ -318,6 +330,27 @@ Autopilot runs agents unattended, so the defaults are conservative:
 - **Isolated work.** Claude Code background sessions work in their own Git worktree (under the git-ignored `.claude/worktrees/`), not your checkout.
 
 Autopilot is not a sandbox. Claude runs on your machine with your accounts and whatever you allow, so review `allowedTools` before your first run.
+
+## Trust handoff with HostLatch (optional)
+
+An agent's sandbox ends when its work lands in your repository. What it changed there can still run later with your authority: when you install dependencies, open the folder in your IDE, let CI run, or start the next agent session. [HostLatch](https://github.com/iammurtaza53/hostlatch), by the same author, finds those changes: package lifecycle scripts, IDE tasks, agent hooks and settings, MCP commands, CI workflows, Git attributes and dev containers.
+
+Switch it on per project:
+
+```json
+"trustGate": { "enabled": true, "command": "hostlatch", "failOn": "block" }
+```
+
+Install HostLatch with `npm install -g github:iammurtaza53/hostlatch#v0.2.0`, or skip the install with `"command": "npx --yes github:iammurtaza53/hostlatch#v0.2.0"`.
+
+With the gate on:
+
+- **Every `dev-autopilot check` ends with a HostLatch scan of the task branch against the base branch.** It prints one line when the scan is clean. Otherwise it shows the decision, the findings (rule, path, title; the evidence stays in the stored manifest) and the manifest path. `failOn` sets what fails the check: `block` (the default), or `review` as well. `dev-autopilot check --only trust` runs only the scan.
+- **Anything HostLatch flags gets the full Codex review budget**, `reviewer.maxRounds`, whatever the size of the diff.
+- **The Claude rule says what to do with a finding.** Remove a change the task doesn't need. List a needed one under "Trust handoff (HostLatch)" in the pull request. Treat a `block` as a human gate and stop before merge. Never rewrite or hide a change to pass the scan.
+- **`status` shows the last decision, and `doctor` checks that HostLatch runs.** If the gate is on and HostLatch can't run, every check fails instead of passing silently.
+
+You can also use HostLatch without the gate. Scan a branch an Autopilot session produced before you merge it: `hostlatch scan . --base origin/main`.
 
 ## How it works
 
@@ -394,6 +427,8 @@ git commit -m "chore: upgrade Dev Agent Autopilot"
 Upgrading from v0.3.x to v0.4 needs no config changes, and the config file is left exactly as it was. The new `codexPlugin` setting is optional, and the plugin itself isn't required. After upgrading, sessions that `run` or `resume` starts or respawns get the new settings, with the plugin switched off inside them.
 
 Upgrading to v0.4.1 needs no config changes either: LeanLoop is on with its defaults, quota auto-resume stays off, and your `reviewer.maxRounds` is kept as the cap. Run `dev-autopilot upgrade` and commit the refreshed rule; `doctor` warns while the committed rule is from an older version. Make sure `dev-autopilot` is on PATH (`npm link`), because sessions call its LeanLoop helpers. To keep v0.4.0 behaviour exactly, set `"leanloop": { "enabled": false }`.
+
+Upgrading to v0.4.2 needs no config change either. The HostLatch trust gate stays off until you add `"trustGate": { "enabled": true }`. Run `dev-autopilot upgrade` to refresh the rule, which now says how to handle HostLatch findings.
 
 ## Related projects
 

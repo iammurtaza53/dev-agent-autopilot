@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.2: HostLatch trust-handoff gate
+
+- **Optional trust gate** (`trustGate`, off by default). It runs [HostLatch](https://github.com/iammurtaza53/hostlatch) on the task branch. HostLatch finds agent-written changes that a trusted host could later execute with the developer's authority: package lifecycle scripts, IDE tasks, agent hooks and settings, MCP commands, CI workflows, Git attributes and dev containers. Autopilot runs HostLatch as an external command and only reads its JSON manifest.
+  - `dev-autopilot check` ends with a HostLatch scan. The output shows the decision, risk score, findings (rule, path, title; evidence stays in the stored manifest) and manifest path. `failOn` (`block` or `review`) decides what fails the check, and `check --only trust` runs just the scan.
+  - If the gate is on and HostLatch can't run, the check fails rather than passing silently. `doctor` reports the gate and fails if HostLatch is missing.
+  - A HostLatch finding makes the change high-risk for the adaptive Codex review, so it gets `reviewer.maxRounds`.
+  - The Claude rule says what to do with a finding: remove a change the task doesn't need, list a needed one under "Trust handoff (HostLatch)" in the PR, treat a `block` as a human gate, and never rewrite or hide a change to pass the scan.
+  - The Context Capsule's settings block, `status` and the task state show the gate and its last decision.
+  - `trustGate.command` can be `hostlatch` (global install), an npx command (`npx --yes github:iammurtaza53/hostlatch#v0.2.0`) or `node "<path>/bin/hostlatch.js"`. It is split without a shell.
+- **Install without cloning.** The README documents `npx --yes github:iammurtaza53/dev-agent-autopilot#v0.4.2` and `npm install -g github:iammurtaza53/dev-agent-autopilot#v0.4.2`. Nothing is published to the npm registry.
+- The README lists HostLatch as a companion project.
+- The rule's trust-gate section adds 0.5 KB of project memory. The benchmark total is now 281.1 KB → 65.7 KB (still 77% less); [bench/README.md](bench/README.md) has the updated figures.
+- Tests: 15 new tests for the gate, using a fake HostLatch; verified by hand against the real HostLatch 0.2.0 CLI.
+
 ## 0.4.1: LeanLoop, token-efficient orchestration
 
 **LeanLoop: send evidence, not history.** v0.4.1 cuts the context and output Autopilot puts in front of Claude Code and Codex, without weakening checks, reviews or safety rules. Nothing in LeanLoop calls a model. It works with hashes, Markdown sections, git diffs and exit codes, and the repository stays the source of truth. The details are in [docs/leanloop.md](docs/leanloop.md).

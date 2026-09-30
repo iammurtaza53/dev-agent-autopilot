@@ -168,9 +168,9 @@ async function createProject() {
   return { root, config };
 }
 
-// The config as v0.4.0's `init` wrote it: no LeanLoop, adaptive or quota sections, and three review rounds.
+// The config as v0.4.0's `init` wrote it: no LeanLoop, adaptive, quota or trust-gate sections, and three review rounds.
 function v040Config(config) {
-  const { leanloop, quota, ...rest } = config;
+  const { leanloop, quota, trustGate, ...rest } = config;
   const { adaptive, ...reviewer } = rest.reviewer;
   return { ...rest, reviewer: { ...reviewer, maxRounds: 3 } };
 }

@@ -40,26 +40,26 @@ Choices that favour v0.4.0:
 
 ## Results
 
-Produced by `npm run bench` on this commit. v0.4.1's check output includes measured durations, so its totals vary by a few bytes between runs (65,686 to 65,700 bytes in our runs); the v0.4.0 side is byte-for-byte stable at 287,829 bytes.
+Produced by `npm run bench` on v0.4.2. The v0.4.1 column is the current LeanLoop code, including the v0.4.2 trust-gate rule. Its check output includes measured durations, so its totals vary by a few bytes between runs (67,243 to 67,244 bytes in our runs); the v0.4.0 side is byte-for-byte stable at 287,829 bytes.
 
 | Scenario | v0.4.0 | v0.4.1 | Change | Codex calls | Review rounds | Context read at start |
 | --- | ---: | ---: | ---: | --- | --- | --- |
-| A. docs-only change | 63.0 KB | 17.1 KB | 73% less | 2 → 1 | 1 → 0 | 5 context files → capsule |
-| B. small code change | 93.7 KB | 20.4 KB | 78% less | 3 → 2 | 2 → 1 | 5 context files → capsule |
-| C. normal code change, verbose tests | 124.4 KB | 24.4 KB | 80% less | 3 → 3 | 2 → 2 | 5 context files → capsule |
+| A. docs-only change | 63.0 KB | 17.6 KB | 72% less | 2 → 1 | 1 → 0 | 5 context files → capsule |
+| B. small code change | 93.7 KB | 20.9 KB | 78% less | 3 → 2 | 2 → 1 | 5 context files → capsule |
+| C. normal code change, verbose tests | 124.4 KB | 24.9 KB | 80% less | 3 → 3 | 2 → 2 | 5 context files → capsule |
 | D. resume, unchanged task and context | 0.0 KB | 0.4 KB | +0.4 KB | 0 → 0 | 0 → 0 | none (claude respawn sends no message) → none |
 | E. resume after a context file changed | 0.0 KB | 1.8 KB | +1.8 KB | 0 → 0 | 0 → 0 | none, and the change is never delivered (stale context) → delta only |
-| **Total** | **281.1 KB** | **64.1 KB** | **77% less** | 8 → 6 | | |
+| **Total** | **281.1 KB** | **65.7 KB** | **77% less** | 8 → 6 | | |
 
 | Component | v0.4.0 | v0.4.1 |
 | --- | ---: | ---: |
 | Launch context | 77.9 KB | 29.4 KB |
-| Project memory (rule + CLAUDE.md) | 16.3 KB | 21.3 KB |
+| Project memory (rule + CLAUDE.md) | 16.3 KB | 22.8 KB |
 | Check output | 180.0 KB | 2.9 KB |
 | Codex plan and review text | 6.9 KB | 8.3 KB |
 | Resume messages | 0.0 KB | 2.3 KB |
 
-Counting v0.4.0's explicit rereads of the rule and `CLAUDE.md`, 297.3 KB → 64.1 KB (78% less). All 21 required-information checks pass, for example:
+Counting v0.4.0's explicit rereads of the rule and `CLAUDE.md`, 297.3 KB → 65.7 KB (78% less). All 21 required-information checks pass, for example:
 
 - the task verbatim;
 - `AGENTS.md` and the Security section verbatim;
@@ -71,11 +71,11 @@ Counting v0.4.0's explicit rereads of the rule and `CLAUDE.md`, 297.3 KB → 64.
 
 ## Where the savings come from
 
-- **Quiet checks** are the largest part. Without check output, the reduction is 39% (101.1 KB → 61.2 KB).
+- **Quiet checks** are the largest part. Without check output, the reduction is 38% (101.1 KB → 62.8 KB).
 - **Context Capsule:** launch context is 62% smaller. The capsule keeps the task, the mandatory rules and 1 to 4 relevant sections, and indexes the rest.
 - **Adaptive review:** 2 fewer Codex review rounds across A and B. Scenario C keeps both rounds.
 - **The cost side:**
-  - the v0.4.1 rule is 1.7 KB larger and is project memory in every session;
+  - the current rule is 2.2 KB larger than v0.4.0's (0.5 KB of that is the v0.4.2 trust-gate section) and is project memory in every session;
   - the wrapper adds footer lines to Codex output;
   - resumes send a message (0.4 KB unchanged, 1.8 KB with a delta) where v0.4.0 sent nothing. v0.4.0 also never delivered the changed context in scenario E, so its session kept working from stale text.
 

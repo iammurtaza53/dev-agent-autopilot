@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dev Agent Autopilot — Claude Code + Codex Development Orchestrator</title>
+  <meta name="description" content="Dev Agent Autopilot is a free, open-source CLI that runs Claude Code and Codex together: Codex plans, Claude Code builds and runs your checks, Codex reviews, Claude opens the pull request and fixes CI, and you merge.">
+  <meta name="keywords" content="Claude Code, Codex CLI, AI coding agents, agent orchestration, AI code review, background agents, multi-agent workflow, pull request automation, developer tools, CLI">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta name="theme-color" content="#0d1117">
+  <link rel="canonical" href="https://murtazazoaib.com/dev-agent-autopilot/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Murtaza Z.">
+  <meta property="og:title" content="Dev Agent Autopilot — Codex plans. Claude Code builds. Codex reviews. You merge.">
+  <meta property="og:description" content="An open-source CLI that takes one task from NEXT_TASK.md to a CI-checked pull request with Claude Code and Codex, then stops for you to merge.">
+  <meta property="og:url" content="https://murtazazoaib.com/dev-agent-autopilot/">
+  <meta property="og:image" content="https://murtazazoaib.com/dev-agent-autopilot/assets/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Dev Agent Autopilot: Codex plans, Claude Code builds, Codex reviews, you merge">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Dev Agent Autopilot — Claude Code + Codex Development Orchestrator">
+  <meta name="twitter:description" content="Codex plans. Claude Code builds and runs your checks. Codex reviews. Claude opens the PR and fixes CI. You merge.">
+  <meta name="twitter:image" content="https://murtazazoaib.com/dev-agent-autopilot/assets/social-preview.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Dev Agent Autopilot",
+    "alternateName": "dev-autopilot",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Windows, macOS, Linux",
+    "softwareVersion": "0.4.2",
+    "description": "An open-source command-line orchestrator for Claude Code and the Codex CLI. Codex plans, Claude Code implements and runs your checks, Codex reviews, Claude opens the pull request and fixes CI, and a person merges.",
+    "url": "https://murtazazoaib.com/dev-agent-autopilot/",
+    "image": "https://murtazazoaib.com/dev-agent-autopilot/assets/social-preview.png",
+    "codeRepository": "https://github.com/iammurtaza53/dev-agent-autopilot",
+    "downloadUrl": "https://github.com/iammurtaza53/dev-agent-autopilot/releases",
+    "installUrl": "https://github.com/iammurtaza53/dev-agent-autopilot#quick-start",
+    "releaseNotes": "https://github.com/iammurtaza53/dev-agent-autopilot/blob/main/CHANGELOG.md",
+    "license": "https://opensource.org/license/mit",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "softwareRequirements": "Node.js 22.13 or later, Git, GitHub CLI, Claude Code, Codex CLI",
+    "author": {
+      "@type": "Person",
+      "name": "Murtaza Z.",
+      "url": "https://murtazazoaib.com/"
+    }
+  }
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --ink: #f0f6fc;
+      --muted: #9da7b3;
+      --line: #30363d;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --amber: #d29922;
+      --code-bg: #010409;
+      --glow-a: rgba(88, 166, 255, .16);
+      --glow-b: rgba(63, 185, 80, .10);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --panel: #f6f8fa;
+        --ink: #1f2328;
+        --muted: #59636e;
+        --line: #d1d9e0;
+        --accent: #0969da;
+        --green: #1a7f37;
+        --amber: #9a6700;
+        --code-bg: #f6f8fa;
+        --glow-a: rgba(9, 105, 218, .10);
+        --glow-b: rgba(26, 127, 55, .07);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(60rem 32rem at 90% -8%, var(--glow-a), transparent 60%),
+        radial-gradient(44rem 28rem at -10% 30rem, var(--glow-b), transparent 60%),
+        var(--bg);
+      font: 17px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1050px, calc(100% - 2rem)); margin: 0 auto; padding: 5rem 0 3rem; }
+    .eyebrow { color: var(--green); font-weight: 750; letter-spacing: .12em; text-transform: uppercase; font-size: .9rem; }
+    h1 { margin: .5rem 0 1rem; font-size: clamp(2.6rem, 8vw, 5.6rem); line-height: .98; letter-spacing: -.045em; }
+    h2 { margin: 3.5rem 0 1rem; font-size: clamp(1.6rem, 4vw, 2.3rem); letter-spacing: -.02em; line-height: 1.2; }
+    h3 { margin: 0 0 .35rem; font-size: 1.05rem; }
+    p { margin: 0 0 1rem; }
+    .tagline { margin: 0 0 1rem; font-size: clamp(1.25rem, 3vw, 1.75rem); font-weight: 700; line-height: 1.3; }
+    .tagline span { color: var(--muted); font-weight: 600; }
+    .lead { max-width: 780px; color: var(--muted); font-size: clamp(1.05rem, 2.2vw, 1.3rem); }
+    .actions { display: flex; flex-wrap: wrap; gap: .8rem; margin: 2rem 0 3rem; }
+    a { color: var(--accent); }
+    .button { display: inline-block; padding: .75rem 1.1rem; border: 1px solid var(--accent); border-radius: .55rem; color: #fff; background: var(--accent); font-weight: 700; text-decoration: none; }
+    @media (prefers-color-scheme: dark) { .button { color: var(--bg); } }
+    .button.secondary { color: var(--ink); background: transparent; border-color: var(--line); }
+    .button:hover { filter: brightness(1.08); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+    .grid.three { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
+    .card { padding: 1.25rem; border: 1px solid var(--line); border-radius: .8rem; background: color-mix(in srgb, var(--panel) 92%, transparent); }
+    .card strong { display: block; color: var(--accent); font-size: 1.8rem; line-height: 1.2; margin-bottom: .25rem; }
+    .card p { margin: 0; color: var(--muted); }
+    .compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+    .compare .card h3 { color: var(--amber); }
+    .compare .card.with h3 { color: var(--green); }
+    ol.loop { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+    ol.loop li { counter-increment: step; display: grid; grid-template-columns: 2.4rem 1fr; gap: .9rem; align-items: start; padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: .8rem; background: color-mix(in srgb, var(--panel) 92%, transparent); }
+    ol.loop li::before { content: counter(step); display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border-radius: 50%; background: var(--accent); color: var(--bg); font-weight: 800; }
+    ol.loop li.you::before { background: var(--green); }
+    ol.loop li p { margin: 0; color: var(--muted); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace; font-size: .92em; }
+    :not(pre) > code { padding: .1em .35em; border-radius: .3rem; background: color-mix(in srgb, var(--panel) 80%, var(--line)); }
+    pre { overflow: auto; padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: .7rem; background: var(--code-bg); line-height: 1.55; }
+    pre .c { color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: .7rem; }
+    th, td { padding: .65rem .85rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+    th { background: color-mix(in srgb, var(--panel) 90%, transparent); }
+    ul.links { padding-left: 1.2rem; }
+    ul.links li { margin: .35rem 0; }
+    .note { color: var(--muted); font-size: .95rem; }
+    footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .95rem; }
+    @media (max-width: 560px) {
+      main { width: calc(100% - 2rem); padding-top: 3rem; }
+      ol.loop li { grid-template-columns: 2rem 1fr; padding: .9rem; }
+      ol.loop li::before { width: 2rem; height: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Open-source developer tool</div>
+    <h1>Dev Agent Autopilot</h1>
+    <p class="tagline">Codex plans. Claude Code builds. Codex reviews. <span>You merge.</span></p>
+    <p class="lead">A command-line orchestrator for Claude Code, the Codex CLI and GitHub CI. Write a task in <code>NEXT_TASK.md</code>, run <code>dev-autopilot run</code>, and get back a reviewed, CI-checked pull request, without copying diffs and test failures between agents.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/iammurtaza53/dev-agent-autopilot">View on GitHub</a>
+      <a class="button secondary" href="#try-it">Quick start</a>
+      <a class="button secondary" href="https://github.com/iammurtaza53/dev-agent-autopilot/releases">Download a release</a>
+    </div>
+
+    <div class="grid" aria-label="At a glance">
+      <div class="card"><strong>77% less</strong><p>agent-facing text on the LeanLoop benchmark, with every required-information check passing</p></div>
+      <div class="card"><strong>0 auto-merges</strong><p>merges, deploys, payments, secrets and DNS stay behind human gates</p></div>
+      <div class="card"><strong>No API keys</strong><p>it drives the <code>claude</code>, <code>codex</code> and <code>gh</code> CLIs you're already signed in to</p></div>
+      <div class="card"><strong>MIT</strong><p>licensed, tested on Linux, Windows and macOS</p></div>
+    </div>
+
+    <h2>Stop being the glue between your AI agents</h2>
+    <div class="compare">
+      <div class="card">
+        <h3>Without Autopilot</h3>
+        <p>You ask Claude Code for a feature, copy the diff into Codex for a review, paste the review back, run the tests, paste the failures, push, wait for CI, paste those failures too, and open the pull request by hand. You are the message bus.</p>
+      </div>
+      <div class="card with">
+        <h3>With Autopilot</h3>
+        <p>You write the task and run one command. It returns immediately, and the work continues in a Claude Code background session until the pull request is ready for you. Close the terminal or reboot, run it again, and the same session picks up where it left off.</p>
+      </div>
+    </div>
+
+    <h2>How one task runs</h2>
+    <ol class="loop">
+      <li><div><h3>Codex plans</h3><p>Approach, files to touch, risks and a test plan, in a read-only sandbox. Codex never edits code.</p></div></li>
+      <li><div><h3>Claude Code implements</h3><p>In a background session and its own worktree, running your real test, lint and build commands until they pass.</p></div></li>
+      <li><div><h3>Codex reviews the branch</h3><p>A fresh, independent <code>codex review</code>. The git diff sets the budget: docs-only changes skip it, risky ones get every round. A clean review ends the loop.</p></div></li>
+      <li><div><h3>Claude opens the pull request</h3><p>With a Codex review summary, then watches CI and fixes failures the task caused.</p></div></li>
+      <li class="you"><div><h3>You review and merge</h3><p>Autopilot never merges, deploys or touches secrets. It stops and reports a blocker instead.</p></div></li>
+    </ol>
+
+    <h2 id="try-it">Try it</h2>
+    <p>You need Node.js 22.13+, Git, the GitHub CLI, Claude Code (2.1.139+) and the Codex CLI, each signed in. Autopilot isn't on the npm registry; install a tagged release straight from GitHub.</p>
+    <pre><code><span class="c"># Try a command without installing</span>
+npx --yes github:iammurtaza53/dev-agent-autopilot#v0.4.2 --help
+
+<span class="c"># Install it (Autopilot sessions call dev-autopilot by name)</span>
+npm install -g github:iammurtaza53/dev-agent-autopilot#v0.4.2
+dev-autopilot install-reviewer
+
+<span class="c"># Onboard a project once, then commit the two files it writes</span>
+cd your-project
+dev-autopilot init
+dev-autopilot doctor
+
+<span class="c"># Describe the work in NEXT_TASK.md, commit it, then</span>
+dev-autopilot run
+dev-autopilot status</code></pre>
+    <p class="note">Want to see it work first? The <a href="https://github.com/iammurtaza53/dev-agent-autopilot/tree/main/examples/demo-todo-app">demo project</a> is a tiny Node app with a ready-made task and takes about ten minutes.</p>
+
+    <h2>Why it's different</h2>
+    <div class="grid three">
+      <div class="card"><h3>Real checks, not self-reports</h3><p>Your own deterministic commands and GitHub CI decide when the work is done, not the agent's say-so.</p></div>
+      <div class="card"><h3>Two vendors keep each other honest</h3><p>One company's model writes the code; another's plans and reviews it.</p></div>
+      <div class="card"><h3>LeanLoop: evidence, not history</h3><p>Context Capsules, quiet checks and delta resumes keep what reaches the agents small, without an extra model and without hiding a failure.</p></div>
+      <div class="card"><h3>No hard-coded model IDs</h3><p>Claude and Codex use whatever models you've configured, so it doesn't go stale when new ones ship.</p></div>
+      <div class="card"><h3>Optional trust-handoff gate</h3><p>Switch on <a href="https://murtazazoaib.com/hostlatch/">HostLatch</a> and every check flags agent-written changes that could later run with your authority.</p></div>
+      <div class="card"><h3>Small on purpose</h3><p>A thin Node launcher over Claude Code's native background agents and Codex's native CLI. No custom agent runtime.</p></div>
+    </div>
+
+    <h2>Who does what</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Part</th><th>Owns</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Dev Agent Autopilot</strong></td><td>The task lifecycle: launching and resuming the session, the workflow rule Claude follows, per-session permissions, the bounded review loop, status and the human gates</td></tr>
+          <tr><td><strong>Claude Code</strong></td><td>Background sessions and worktrees, implementation, your checks, Git, the pull request and CI fixes</td></tr>
+          <tr><td><strong>Codex CLI</strong></td><td>Read-only planning and the automated review loop</td></tr>
+          <tr><td><strong>You</strong></td><td>The task, the review of the pull request, the merge and anything behind a human gate</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Read more</h2>
+    <ul class="links">
+      <li><a href="https://github.com/iammurtaza53/dev-agent-autopilot#readme">README</a>: requirements, configuration, commands and FAQ</li>
+      <li><a href="leanloop.html">LeanLoop design</a>: Context Capsules, Delta Resume, quiet checks and the adaptive review budget</li>
+      <li><a href="https://github.com/iammurtaza53/dev-agent-autopilot/blob/main/bench/README.md">Benchmark</a>: the method, the per-scenario results and the limits of the measurement</li>
+      <li><a href="codex-plugin.html">The official Codex plugin</a>: how Autopilot works alongside it</li>
+      <li><a href="https://github.com/iammurtaza53/dev-agent-autopilot/blob/main/CHANGELOG.md">Changelog</a> and <a href="https://github.com/iammurtaza53/dev-agent-autopilot/blob/main/SECURITY.md">security policy</a></li>
+      <li><a href="https://murtazazoaib.com/hostlatch/">HostLatch</a>, the companion trust-handoff scanner for AI-written repositories</li>
+    </ul>
+
+    <footer>Dev Agent Autopilot 0.4.2 · Created by <a href="https://murtazazoaib.com/">Murtaza Z.</a> · <a href="https://github.com/iammurtaza53/dev-agent-autopilot/blob/main/LICENSE">MIT License</a> · Not affiliated with Anthropic or OpenAI</footer>
+  </main>
+</body>
+</html>

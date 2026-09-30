@@ -280,7 +280,7 @@ Bash(dev-autopilot state*)
 
 ## Benchmark
 
-`npm run bench` runs the real current code on deterministic fixtures and compares it with v0.4.0's exact launch prompt and rule. The methodology, the per-scenario results and the limits of the measurement are in [bench/README.md](../bench/README.md). Headline on that benchmark: 281 KB → 66 KB of agent-facing text (77% less), with every required-information check passing.
+`npm run bench` runs the real current code on deterministic fixtures and compares it with v0.4.0's exact launch prompt and rule. The methodology, the per-scenario results and the limits of the measurement are in [bench/README.md](https://github.com/iammurtaza53/dev-agent-autopilot/blob/main/bench/README.md). Headline on that benchmark: 281 KB → 66 KB of agent-facing text (77% less), with every required-information check passing.
 
 ## Limitations
 

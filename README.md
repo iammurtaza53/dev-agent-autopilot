@@ -11,7 +11,7 @@ A project-agnostic development orchestrator for **Claude Code + Codex + GitHub C
 [![Node >= 22.13](https://img.shields.io/badge/node-%3E%3D22.13-brightgreen.svg)](package.json)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-[Quick start](#quick-start) · [LeanLoop](#leanloop-send-evidence-not-history) · [How it works](#how-it-works) · [Demo project](examples/demo-todo-app) · [Commands](#commands) · [FAQ](#faq) · [Related projects](#related-projects)
+[Website](https://murtazazoaib.com/dev-agent-autopilot/) · [Quick start](#quick-start) · [LeanLoop](#leanloop-send-evidence-not-history) · [How it works](#how-it-works) · [Demo project](examples/demo-todo-app) · [Commands](#commands) · [FAQ](#faq) · [Related projects](#related-projects)
 
 </div>
 

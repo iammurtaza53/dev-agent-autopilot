@@ -399,6 +399,10 @@ Upgrading to v0.4.1 needs no config changes either: LeanLoop is on with its defa
 
 Autopilot is one of several tools built around the same idea, and some go further in particular directions. If one of them fits your workflow better, use it. This list isn't exhaustive.
 
+**Companion project (same author)**
+
+- [HostLatch](https://github.com/iammurtaza53/hostlatch): a trust-handoff firewall for AI-written repositories. Before a trusted host (Git, an IDE, a package manager, CI or the next agent session) acts on an agent's changes, it checks the files that could run with your authority: agent hooks and settings, MCP commands, IDE tasks, package lifecycle scripts and CI workflows. It pairs with Autopilot: run `hostlatch scan . --base origin/main` on a branch an Autopilot session produced, before you merge it.
+
 **Claude Code with Codex (or another reviewer) in a loop**
 
 - [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc): OpenAI's official Codex plugin for Claude Code, with `/codex:review`, `/codex:adversarial-review` and an optional Stop-time review gate. Autopilot works alongside it; see [docs/codex-plugin.md](docs/codex-plugin.md).

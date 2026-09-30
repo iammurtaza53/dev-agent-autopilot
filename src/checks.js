@@ -313,8 +313,10 @@ function selectChecks(checks, only) {
   return matches;
 }
 
-// Runs the checks sequentially and returns the compact report plus per-check results.
-export async function runChecks({ workRoot, stateRoot, config, taskHash, only, bail = false, force = false, now = () => new Date(), runGit = git, env = process.env }) {
+// Runs the checks sequentially and returns the compact report plus per-check results. `gates` are extra async
+// checks (such as the HostLatch trust gate) that run after the configured ones and return { name, status, text },
+// where status is pass, review or fail.
+export async function runChecks({ workRoot, stateRoot, config, taskHash, only, bail = false, force = false, now = () => new Date(), runGit = git, env = process.env, gates = [] }) {
   const options = checkOptions(config);
   const checks = selectChecks(normalizeChecks(config), only);
   const startedAt = now();
@@ -368,10 +370,18 @@ export async function runChecks({ workRoot, stateRoot, config, taskHash, only, b
     latest[check.name] = { status: result.status, at: `${startedAt.toISOString().slice(0, 19).replace('T', ' ')} UTC`, runId, logFile, logBytes: run.bytes, reuseKey };
   }
 
+  for (const gate of gates) {
+    const outcome = await gate();
+    lines.push(outcome.text);
+    results.push({ name: outcome.name, command: outcome.command || outcome.name, status: outcome.status, gate: true, logBytes: outcome.logBytes || 0, compactBytes: byteLength(outcome.text) });
+  }
+
   const passedCount = results.filter((result) => result.status === 'pass' || result.status === 'reused').length;
   const failedCount = results.filter((result) => result.status === 'fail').length;
-  const footer = checks.length
-    ? `checks: ${passedCount} passed, ${failedCount} failed${results.some((result) => result.status === 'skipped') ? `, ${results.filter((result) => result.status === 'skipped').length} skipped` : ''}${failedCount ? ' · full log: dev-autopilot check --log <name>' : ''}`
+  const reviewCount = results.filter((result) => result.status === 'review').length;
+  const failedCheck = results.some((result) => result.status === 'fail' && !result.gate);
+  const footer = checks.length || gates.length
+    ? `checks: ${passedCount} passed, ${failedCount} failed${reviewCount ? `, ${reviewCount} for review` : ''}${results.some((result) => result.status === 'skipped') ? `, ${results.filter((result) => result.status === 'skipped').length} skipped` : ''}${failedCheck ? ' · full log: dev-autopilot check --log <name>' : ''}`
     : 'No checks are configured in "checks" in .autopilot/config.json.';
   lines.push(footer);
   const output = `${lines.join('\n')}\n`;
@@ -381,11 +391,11 @@ export async function runChecks({ workRoot, stateRoot, config, taskHash, only, b
     taskHash: taskHash || null,
     workRoot,
     startedAt: startedAt.toISOString(),
-    results: results.map(({ name, command, status, exitCode, durationMs, logFile, logBytes, compactBytes }) => ({ name, command, status, exitCode, durationMs, logFile, logBytes, compactBytes })),
+    results: results.map(({ name, command, status, exitCode, durationMs, logFile, logBytes, compactBytes, gate }) => ({ name, command, status, exitCode, durationMs, logFile, logBytes, compactBytes, gate })),
   });
   await writeJsonAtomic(latestFile, latest);
   await pruneRuns(taskDir, options.keepRuns, new Set(Object.values(latest).map((entry) => entry?.runId).filter(Boolean)));
-  return { runId, output, results, status: failedCount ? 'fail' : 'pass', checksConfigured: checks.length };
+  return { runId, output, results, status: failedCount ? 'fail' : 'pass', checksConfigured: checks.length + gates.length };
 }
 
 // Finds the stored log of the latest run of one check, by name, command or 1-based position.

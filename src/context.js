@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { byteLength, findSecrets, formatBytes, git, readJsonSafe, sha256, writeFileAtomic, writeJsonAtomic } from './lib.js';
 import { CONFIG_FILE, runtimePath, taskKey } from './runtime.js';
+import { trustGateOptions } from './trust-gate.js';
 
 export const CAPSULE_ENGINE = 'leanloop-capsule-1';
 export const RULE_FILE = '.claude/rules/dev-autopilot.md';
@@ -557,6 +558,8 @@ export function settingsBlock(config) {
     `- Codex review: ${reviewLine(config)}.`,
     `- Quota auto-resume: ${config?.quota?.autoResume === true ? 'on' : 'off'}.`,
   ];
+  const gate = trustGateOptions(config);
+  if (gate.enabled) lines.push(`- Trust handoff gate: HostLatch runs with \`dev-autopilot check\` and fails on ${gate.failOn === 'review' ? 'review or block' : 'block'}; a block is a human gate.`);
   const gates = Array.isArray(config?.safety?.humanGates) ? config.safety.humanGates : [];
   if (gates.length) lines.push('- Human gates (`safety.humanGates`, verbatim):', ...gates.map((gate) => `  - ${gate}`));
   const notes = Array.isArray(config?.safety?.notes) ? config.safety.notes : [];

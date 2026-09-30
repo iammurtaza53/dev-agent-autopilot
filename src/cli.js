@@ -31,7 +31,8 @@ import { classifySession, findSession, isBackground, isCurrentTask, matchesRecor
 import { CONFIG_FILE, RUNTIME_DIR, resolveRoots, runtimePath, sameFolder, samePath } from './runtime.js';
 import { contextProblems, ensureCapsule, pruneCapsules, renderDelta, writeDelta } from './context.js';
 import { checkProblems, latestLog, normalizeChecks, runChecks } from './checks.js';
-import { adaptiveProblems, classifyChange, collectDiff, DEFAULT_MAX_ROUNDS, reviewBudget } from './review-policy.js';
+import { adaptiveProblems, classifyChange, collectDiff, DEFAULT_MAX_ROUNDS, resolveBase, reviewBudget } from './review-policy.js';
+import { commandParts, formatTrustBlock, runTrustScan, trustGateOptions, trustGateProblems, trustReviewReasons, trustStateOf } from './trust-gate.js';
 import { assessFailure, quotaOptions, quotaProblems, resumeAtFor } from './quota.js';
 import { acquireLock, closeTicket, isDue, isExpired, launchDetachedHelper, newTicket, processAlive, readTicket, writeTicket } from './tickets.js';
 import { readTaskState, stateForTask, updateTaskState } from './task-state.js';
@@ -252,6 +253,11 @@ function buildConfig(root, name = path.basename(root)) {
       autoResume: false,
       graceMinutes: 2,
     },
+    trustGate: {
+      enabled: false,
+      command: 'hostlatch',
+      failOn: 'block',
+    },
     checks: [],
     safety: {
       requireCleanStart: true,
@@ -310,6 +316,10 @@ If a Codex plan or review fails (for example: not signed in, network error), ret
 ## Orchestration state
 
 Record facts with \`dev-autopilot state\` instead of restating them in chat: \`--pr <number>\` after opening the PR, \`--ci pending|passing|failing\`, \`--blocker "<reason>"\`, and \`--status ready\` when the PR is ready for human review.
+
+## Trust handoff (HostLatch)
+
+When \`trustGate.enabled\` is \`true\`, \`dev-autopilot check\` also runs HostLatch, which flags changes a trusted host could later execute (install scripts, IDE tasks, agent hooks and settings, MCP commands, CI workflows). Remove a flagged change the task doesn't need, and list a needed one under "Trust handoff (HostLatch)" in the pull request. A \`block\` is a human gate: record it with \`dev-autopilot state --blocker\` and stop before merge. Never rewrite or hide a change to pass the scan.
 
 ## Official Codex plugin (codex-plugin-cc)
 
@@ -421,7 +431,7 @@ function configProblems(config) {
   const leanloop = config.leanloop;
   if (leanloop !== undefined && (!leanloop || typeof leanloop !== 'object' || Array.isArray(leanloop))) problems.push('leanloop must be an object.');
   else if (leanloop?.enabled !== undefined && typeof leanloop.enabled !== 'boolean') problems.push(`leanloop.enabled must be true or false (found ${JSON.stringify(leanloop.enabled)}).`);
-  problems.push(...contextProblems(config), ...checkProblems(config), ...adaptiveProblems(config), ...quotaProblems(config));
+  problems.push(...contextProblems(config), ...checkProblems(config), ...adaptiveProblems(config), ...quotaProblems(config), ...trustGateProblems(config));
   for (const [kind, section] of [['plan', 'planner'], ['review', 'reviewer']]) {
     const command = config[section]?.command;
     if (command === undefined || (kind === 'plan' && config.planner?.enabled !== true)) continue;
@@ -520,6 +530,7 @@ async function upgrade(root) {
     console.log(`LeanLoop is on with its defaults (Context Capsule, Delta Resume, quiet checks, adaptive review up to reviewer.maxRounds = ${config.reviewer?.maxRounds ?? DEFAULT_MAX_ROUNDS}). Set "leanloop": { "enabled": false } to keep the v0.4 behaviour.`);
   }
   if (config.quota === undefined) console.log('Quota auto-resume stays off. Opt in with "quota": { "autoResume": true, "graceMinutes": 2 }.');
+  if (config.trustGate === undefined) console.log('Optional: a HostLatch trust-handoff gate for agent-written changes. Opt in with "trustGate": { "enabled": true }; see "Trust handoff with HostLatch" in the README.');
   await ensureRule(root);
   console.log(`Updated ${CLAUDE_RULE_FILE} to v${VERSION}.`);
   await ensureGitignore(root);
@@ -709,6 +720,10 @@ async function doctor(root) {
   const rule = await fs.readFile(path.join(root, CLAUDE_RULE_FILE), 'utf8').catch(() => null);
   const quota = quotaOptions(config);
   const ticket = await readTicket(root);
+  const gate = trustGateOptions(config);
+  const [gateProgram, ...gatePrefix] = commandParts(gate.command);
+  const gateVersion = gate.enabled ? await versionOf(gateProgram, [...gatePrefix, '--version'], root) : null;
+  const gateMissing = gate.enabled && String(gateVersion).startsWith('ERROR:');
 
   const warnings = [];
   if (!codexAuthenticated) warnings.push('Codex CLI is not signed in. Run: codex login');
@@ -716,6 +731,9 @@ async function doctor(root) {
   if (loadPlugin) warnings.push(PLUGIN_GATE_WARNING);
   if (lean && String(onPath).startsWith('ERROR:')) {
     warnings.push('dev-autopilot is not on PATH, so Autopilot sessions fall back to plain checks and codex commands (no quiet checks or review budget). Install it with npm link.');
+  }
+  if (gateMissing) {
+    warnings.push(`trustGate is on, but "${gate.command} --version" failed, so every dev-autopilot check will fail. Install HostLatch (npm install -g github:iammurtaza53/hostlatch#v0.2.0) or set trustGate.command, for example to "npx --yes github:iammurtaza53/hostlatch#v0.2.0".`);
   }
   if (!rule) warnings.push(`${CLAUDE_RULE_FILE} is missing. Run dev-autopilot upgrade and commit it.`);
   else if (!rule.startsWith(`# Dev Agent Autopilot v${VERSION}\n`)) warnings.push(`${CLAUDE_RULE_FILE} is from another Autopilot version. Run dev-autopilot upgrade and commit it.`);
@@ -742,6 +760,9 @@ async function doctor(root) {
       inAutopilotSessions: loadPlugin ? 'loaded (codexPlugin.loadInAutopilotSessions is true)' : 'switched off',
       reviewGate: 'not readable through a supported command; check it with /codex:setup in Claude Code',
     },
+    trustGate: gate.enabled
+      ? { enabled: true, tool: 'HostLatch', command: gate.command, failOn: gate.failOn, available: !gateMissing, version: gateMissing ? null : gateVersion }
+      : { enabled: false },
     leanloop: lean
       ? {
           enabled: true,
@@ -763,7 +784,8 @@ async function doctor(root) {
 
   // The plugin is optional, so its absence or a failed detection never fails doctor.
   const failedTools = Object.values(checks).some((value) => String(value).startsWith('ERROR:'));
-  if (failedTools || claudeAuth.code !== 0 || ghAuth.code !== 0 || !codexAuthenticated || (planner && !planner.ok) || !reviewer.ok || !agents.ok || problems.length) {
+  // The trust gate is opt-in; once it is on, a missing HostLatch fails doctor because every check run would fail.
+  if (failedTools || claudeAuth.code !== 0 || ghAuth.code !== 0 || !codexAuthenticated || (planner && !planner.ok) || !reviewer.ok || !agents.ok || problems.length || gateMissing) {
     process.exitCode = 2;
   }
 }
@@ -790,6 +812,8 @@ function describeReviewSetup(config) {
   const reviewer = reviewerSummary(config);
   const adaptive = leanloopEnabled(config) && config.reviewer?.adaptive !== false && config.reviewer?.adaptive?.enabled !== false;
   console.log(`Reviewer: native Codex CLI (${reviewer.command}), at most ${reviewer.maxRounds} rounds${adaptive ? '; the adaptive budget from the diff can lower that' : ''}.`);
+  const gate = trustGateOptions(config);
+  if (gate.enabled) console.log(`Trust gate: HostLatch (${gate.command}) runs with dev-autopilot check and fails on ${gate.failOn === 'review' ? 'review or block' : 'block'}.`);
   console.log(loadPluginInSessions(config)
     ? `Warning: ${PLUGIN_GATE_WARNING}`
     : `Official Codex plugin (${PLUGIN_ID}): switched off inside this Autopilot session; your own Claude Code sessions are unaffected.`);
@@ -1265,6 +1289,7 @@ function describeTask(state, ticket) {
     context: state.context ? `fingerprint ${short(state.context.fingerprint)}, capsule ${formatBytes(state.context.capsuleBytes || 0)} for ${formatBytes(state.context.rawBytes || 0)}` : null,
     checks: checks ? `${checks.status}: ${checks.passed}/${checks.total} passed at ${checks.at}` : null,
     review: review ? `${review.kind}: ${review.rounds || 0} of ${review.budget} round(s) used (max ${review.maxRounds})` : null,
+    trust: state.trust ? (state.trust.decision === 'error' ? `HostLatch could not run: ${state.trust.error}` : `HostLatch ${state.trust.decision}: ${state.trust.findings} finding(s), manifest ${state.trust.manifestId}`) : null,
     pr: state.pr ?? null,
     ci: state.ci ?? null,
   };
@@ -1432,7 +1457,29 @@ async function check(start, flags) {
     process.stdout.write(`--- ${log.name}: ${log.status}, ${log.file} ---\n${stripAnsi(log.text).trimEnd()}\n`);
     return;
   }
-  const outcome = await runChecks({ workRoot, stateRoot, config, taskHash: hash, only: flags.only, bail: flags.bail === true, force: flags.force === true, now: clock, runGit });
+  // With the trust gate on, a full run (or `--only trust`) ends with a HostLatch scan of the task branch.
+  const gate = trustGateOptions(config);
+  const onlyTrust = typeof flags.only === 'string' && /^(trust|hostlatch)$/i.test(flags.only.trim());
+  if (onlyTrust && !gate.enabled) throw new Error('The HostLatch trust gate is off. Set "trustGate": { "enabled": true } in .autopilot/config.json to use it.');
+  const gates = gate.enabled && (!flags.only || onlyTrust)
+    ? [async () => {
+        const scan = await trustScanFor(workRoot, stateRoot, config, hash);
+        const block = formatTrustBlock(scan, gate.failOn);
+        return { name: 'trust handoff (HostLatch)', command: gate.command, status: block.status, text: block.text };
+      }]
+    : [];
+  const outcome = await runChecks({
+    workRoot,
+    stateRoot,
+    config: onlyTrust ? { ...config, checks: [] } : config,
+    taskHash: hash,
+    only: onlyTrust ? undefined : flags.only,
+    bail: flags.bail === true,
+    force: flags.force === true,
+    now: clock,
+    runGit,
+    gates,
+  });
   process.stdout.write(outcome.output);
   if (!outcome.checksConfigured) return;
   for (const result of outcome.results) {
@@ -1446,10 +1493,24 @@ async function check(start, flags) {
   if (outcome.status === 'fail') process.exitCode = 1;
 }
 
+// Scans the task branch with HostLatch and records the decision in the task state.
+async function trustScanFor(workRoot, stateRoot, config, hash) {
+  const baseName = config.project?.baseBranch || 'main';
+  const base = (await resolveBase(workRoot, baseName, runGit)) || baseName;
+  const scan = await runTrustScan({ exec, workRoot, stateRoot, config, taskHash: hash, base, now: clock() });
+  await patchTaskState(stateRoot, hash, (current) => ({ ...current, trust: trustStateOf(scan, clock().toISOString()) }));
+  return scan;
+}
+
 async function budgetFor(workRoot, stateRoot, config, hash) {
   const base = config.project?.baseBranch || 'main';
   const diff = await collectDiff(workRoot, base, runGit);
-  const classification = classifyChange(diff.files, config);
+  let classification = classifyChange(diff.files, config);
+  // A change HostLatch flags can later run with a trusted host's authority, so it always gets the full budget.
+  if (trustGateOptions(config).enabled && classification.kind !== 'empty') {
+    const reasons = trustReviewReasons(await trustScanFor(workRoot, stateRoot, config, hash));
+    if (reasons.length) classification = { ...classification, kind: 'high-risk', reasons: [...reasons, ...classification.reasons] };
+  }
   const state = await stateForTask(stateRoot, hash);
   const previous = state?.review?.kind ? { kind: state.review.kind, rounds: state.review.budget } : null;
   return { base, diff, budget: reviewBudget(classification, config, previous), used: state?.review?.rounds || 0 };

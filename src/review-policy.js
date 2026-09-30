@@ -179,7 +179,7 @@ export function reviewBudget(classification, config, previous = null) {
   return { ...classification, rounds, maxRounds, adaptive };
 }
 
-async function resolveBase(workRoot, base, runGit) {
+export async function resolveBase(workRoot, base, runGit = git) {
   for (const ref of [base, `origin/${base}`]) {
     const result = await runGit(workRoot, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).catch(() => null);
     if (result?.code === 0) return ref;

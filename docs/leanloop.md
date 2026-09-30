@@ -280,13 +280,13 @@ Bash(dev-autopilot state*)
 
 ## Benchmark
 
-`npm run bench` runs the real v0.4.1 code on deterministic fixtures and compares it with v0.4.0's exact launch prompt and rule. The methodology, the per-scenario results and the limits of the measurement are in [bench/README.md](../bench/README.md). Headline on that benchmark: 281 KB → 64 KB of agent-facing text (77% less), with every required-information check passing.
+`npm run bench` runs the real current code on deterministic fixtures and compares it with v0.4.0's exact launch prompt and rule. The methodology, the per-scenario results and the limits of the measurement are in [bench/README.md](../bench/README.md). Headline on that benchmark: 281 KB → 66 KB of agent-facing text (77% less), with every required-information check passing.
 
 ## Limitations
 
 - The capsule's relevance scoring is deterministic but heuristic. A relevant section can land in the index instead of the capsule; Claude then reads it by line range. Mandatory material never depends on it.
 - On a project with only a small task and little context, such as the demo, the capsule is about the same size as the files it replaces. It carries the settings and human gates explicitly.
-- The v0.4.1 Autopilot rule is about 1.7 KB longer than v0.4.0's, and Claude Code loads it into every session in the project.
+- The Autopilot rule is about 2.2 KB longer than v0.4.0's (1.7 KB from v0.4.1, 0.5 KB from the v0.4.2 trust-gate section), and Claude Code loads it into every session in the project.
 - Adaptive review classifies by paths and changed-line keywords. A security-sensitive change in an innocuously named file with none of the keywords is classed by size. Add the project's own `highRiskPaths` and `highRiskKeywords` for anything the defaults don't cover.
 - Quota detection depends on the wording of the Claude and Codex CLIs. An unrecognised message is treated as an ordinary failure, never as a quota stop with a guessed time.
 - The resume helper doesn't survive a reboot; the next `dev-autopilot` command re-arms it.

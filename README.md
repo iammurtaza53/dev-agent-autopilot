@@ -346,6 +346,7 @@ Install HostLatch with `npm install -g github:iammurtaza53/hostlatch#v0.2.0`, or
 With the gate on:
 
 - **Every `dev-autopilot check` ends with a HostLatch scan of the task branch against the base branch.** It prints one line when the scan is clean. Otherwise it shows the decision, the findings (rule, path, title; the evidence stays in the stored manifest) and the manifest path. `failOn` sets what fails the check: `block` (the default), or `review` as well. `dev-autopilot check --only trust` runs only the scan.
+- **An unchanged tree isn't scanned twice.** The same working tree against the same base commit gets the same decision, so `check` and `review-budget` reuse the last scan, including a `block`. Any change to the tree, a new base commit or `check --force` rescans. A scan that couldn't run is always retried. Only the newest ten manifests per task are kept.
 - **Anything HostLatch flags gets the full Codex review budget**, `reviewer.maxRounds`, whatever the size of the diff.
 - **The Claude rule says what to do with a finding.** Remove a change the task doesn't need. List a needed one under "Trust handoff (HostLatch)" in the pull request. Treat a `block` as a human gate and stop before merge. Never rewrite or hide a change to pass the scan.
 - **`status` shows the last decision, and `doctor` checks that HostLatch runs.** If the gate is on and HostLatch can't run, every check fails instead of passing silently.

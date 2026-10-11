@@ -30,9 +30,9 @@ import {
 import { classifySession, findSession, isBackground, isCurrentTask, matchesRecord, planCleanup, sessionName } from './sessions.js';
 import { CONFIG_FILE, RUNTIME_DIR, resolveRoots, runtimePath, sameFolder, samePath } from './runtime.js';
 import { contextProblems, ensureCapsule, pruneCapsules, renderDelta, writeDelta } from './context.js';
-import { checkProblems, latestLog, normalizeChecks, runChecks } from './checks.js';
+import { checkOptions, checkProblems, latestLog, normalizeChecks, runChecks, treeFingerprint } from './checks.js';
 import { adaptiveProblems, classifyChange, collectDiff, DEFAULT_MAX_ROUNDS, resolveBase, reviewBudget } from './review-policy.js';
-import { commandParts, formatTrustBlock, runTrustScan, trustGateOptions, trustGateProblems, trustReviewReasons, trustStateOf } from './trust-gate.js';
+import { commandParts, formatTrustBlock, readStoredScan, runTrustScan, trustGateOptions, trustGateProblems, trustReviewReasons, trustStateOf } from './trust-gate.js';
 import { assessFailure, quotaOptions, quotaProblems, resumeAtFor } from './quota.js';
 import { acquireLock, closeTicket, isDue, isExpired, launchDetachedHelper, newTicket, processAlive, readTicket, writeTicket } from './tickets.js';
 import { readTaskState, stateForTask, updateTaskState } from './task-state.js';
@@ -1463,7 +1463,7 @@ async function check(start, flags) {
   if (onlyTrust && !gate.enabled) throw new Error('The HostLatch trust gate is off. Set "trustGate": { "enabled": true } in .autopilot/config.json to use it.');
   const gates = gate.enabled && (!flags.only || onlyTrust)
     ? [async () => {
-        const scan = await trustScanFor(workRoot, stateRoot, config, hash);
+        const scan = await trustScanFor(workRoot, stateRoot, config, hash, { force: flags.force === true });
         const block = formatTrustBlock(scan, gate.failOn);
         return { name: 'trust handoff (HostLatch)', command: gate.command, status: block.status, text: block.text };
       }]
@@ -1493,12 +1493,29 @@ async function check(start, flags) {
   if (outcome.status === 'fail') process.exitCode = 1;
 }
 
-// Scans the task branch with HostLatch and records the decision in the task state.
-async function trustScanFor(workRoot, stateRoot, config, hash) {
+// Identifies what a HostLatch scan saw: the exact working tree, the base commit and the configured command.
+// Null when the tree or the base can't be identified, and then the scan always runs.
+async function trustReuseKey(workRoot, base, config) {
+  const tree = await treeFingerprint(workRoot, runGit);
+  const baseCommit = await runGit(workRoot, ['rev-parse', '--verify', '--quiet', `${base}^{commit}`]).catch(() => null);
+  if (!tree || baseCommit?.code !== 0) return null;
+  return sha256(JSON.stringify([tree, baseCommit.stdout.trim(), trustGateOptions(config).command]));
+}
+
+// Scans the task branch with HostLatch and records the decision in the task state. The same tree against the
+// same base commit gets the same decision, so an unchanged tree reuses the last successful scan (unless --force
+// or leanloop.checks.reuseUnchangedPasses is false). A scan that could not run is never reused.
+async function trustScanFor(workRoot, stateRoot, config, hash, { force = false } = {}) {
   const baseName = config.project?.baseBranch || 'main';
   const base = (await resolveBase(workRoot, baseName, runGit)) || baseName;
+  const reuseKey = force || !checkOptions(config).reuseUnchangedPasses ? null : await trustReuseKey(workRoot, base, config);
+  const previous = reuseKey ? (await stateForTask(stateRoot, hash))?.trust : null;
+  if (previous?.reuseKey === reuseKey) {
+    const stored = await readStoredScan(previous.manifest);
+    if (stored) return { ...stored, reusedAt: previous.at };
+  }
   const scan = await runTrustScan({ exec, workRoot, stateRoot, config, taskHash: hash, base, now: clock() });
-  await patchTaskState(stateRoot, hash, (current) => ({ ...current, trust: trustStateOf(scan, clock().toISOString()) }));
+  await patchTaskState(stateRoot, hash, (current) => ({ ...current, trust: trustStateOf(scan, clock().toISOString(), reuseKey) }));
   return scan;
 }
 

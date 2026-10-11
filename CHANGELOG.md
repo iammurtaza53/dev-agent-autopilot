@@ -8,6 +8,7 @@
   - A scan that couldn't run is never reused.
 - **Manifests are kept where the output says they are.** If HostLatch prints its manifest without writing `--output`, Autopilot saves it at the path the check output shows. Manifest names now include milliseconds, so two scans in the same second no longer overwrite each other. Only the newest ten manifests per task are kept.
 - Tests: 6 new tests, 221 in total.
+- **Docs: enforce the gate at merge.** The README shows how to run [HostLatch Action](https://github.com/iammurtaza53/hostlatch-action) in a project's pull-request CI and make it a required check. The local gate gives Claude the findings while it works; the CI check enforces the decision for every pull request.
 
 ## 0.4.2: HostLatch trust-handoff gate
 

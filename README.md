@@ -353,6 +353,40 @@ With the gate on:
 
 You can also use HostLatch without the gate. Scan a branch an Autopilot session produced before you merge it: `hostlatch scan . --base origin/main`.
 
+### Enforce it at merge with CI
+
+The gate runs inside the Autopilot session, where Claude sees the findings while it works. To make the same decision a check at merge time, add [HostLatch Action](https://github.com/iammurtaza53/hostlatch-action) to the project's CI. This file is `.github/workflows/hostlatch.yml`:
+
+```yaml
+name: HostLatch
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  hostlatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # HostLatch compares the branch with its base
+      - uses: iammurtaza53/hostlatch-action@v1
+        with:
+          base: origin/${{ github.base_ref }}
+          fail-on: block   # match trustGate.failOn
+```
+
+Then make the `hostlatch` job a required status check in the base branch's protection rules or ruleset, so a `block` stops the merge button.
+
+- **The action saves its evidence.** It uploads the HostLatch manifest as an artifact even when the job fails, so you can review the findings from the pull request.
+- **Use both.** The local gate gives Claude the findings early, and the review budget treats them as high-risk. The CI check enforces the decision for every pull request, whoever opened it.
+- **Pin it if you need to.** `@v1` follows compatible releases. Pin a full commit SHA for an immutable workflow dependency.
+
+`dev-autopilot init` doesn't add workflow files, so add this one yourself and commit it.
+
 ## How it works
 
 Autopilot is a thin launcher. The heavy lifting is done by features Claude Code and Codex already ship:

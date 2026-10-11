@@ -12,6 +12,7 @@ export const DEFAULT_TRUST_GATE = Object.freeze({ enabled: false, command: 'host
 const DECISIONS = ['allow', 'review', 'block'];
 const FAIL_ON = ['block', 'review'];
 const MAX_FINDINGS_SHOWN = 8;
+const KEEP_MANIFESTS = 10;
 const SCAN_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function trustGateOptions(config) {
@@ -42,8 +43,39 @@ export function commandParts(command) {
   return parts;
 }
 
+// Milliseconds keep two scans in the same second from writing the same manifest file.
 function stamp(date) {
-  return date.toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-');
+  return date.toISOString().replace(/[-:]/g, '').replace('T', '-').replace('.', '-').replace('Z', '');
+}
+
+function scanOf(manifest, file) {
+  return {
+    ok: true,
+    decision: manifest.summary.decision,
+    riskScore: manifest.summary.riskScore ?? null,
+    findings: Array.isArray(manifest.findings) ? manifest.findings : [],
+    bySeverity: manifest.summary.bySeverity || {},
+    manifestId: manifest.manifestId || null,
+    version: manifest.tool?.version || null,
+    file,
+  };
+}
+
+// The scan stored in a manifest file, or null when the file is gone or holds no decision.
+export async function readStoredScan(file) {
+  if (!file) return null;
+  try {
+    const manifest = JSON.parse(await fs.readFile(file, 'utf8'));
+    return DECISIONS.includes(manifest?.summary?.decision) ? scanOf(manifest, file) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Keeps the newest manifests of one task; the newest is the one the task state points to.
+async function pruneManifests(dir, prefix) {
+  const names = (await fs.readdir(dir).catch(() => [])).filter((name) => name.startsWith(prefix) && name.endsWith('.json')).sort();
+  for (const name of names.slice(0, Math.max(0, names.length - KEEP_MANIFESTS))) await fs.rm(path.join(dir, name), { force: true });
 }
 
 // Runs `<command> scan <workRoot> --base <base> --json --output <file> --fail-on never` and returns the parsed
@@ -51,15 +83,18 @@ function stamp(date) {
 export async function runTrustScan({ exec, workRoot, stateRoot, config, taskHash, base, now = new Date() }) {
   const options = trustGateOptions(config);
   const [program, ...prefix] = commandParts(options.command);
-  const file = runtimePath(stateRoot, 'trust', `${taskKey(taskHash)}-${stamp(now)}.json`);
+  const taskPrefix = `${taskKey(taskHash)}-`;
+  const file = runtimePath(stateRoot, 'trust', `${taskPrefix}${stamp(now)}.json`);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const args = [...prefix, 'scan', workRoot, '--base', base, '--json', '--output', file, '--fail-on', 'never'];
   const result = await exec(program, args, { cwd: workRoot, timeoutMs: SCAN_TIMEOUT_MS })
     .catch((error) => ({ code: 127, stdout: '', stderr: error.message, timedOut: false }));
   let manifest = null;
-  for (const source of [() => fs.readFile(file, 'utf8'), async () => result.stdout]) {
+  let written = false;
+  for (const [index, source] of [() => fs.readFile(file, 'utf8'), async () => result.stdout].entries()) {
     try {
       manifest = JSON.parse(await source());
+      written = index === 0;
       break;
     } catch {}
   }
@@ -68,16 +103,10 @@ export async function runTrustScan({ exec, workRoot, stateRoot, config, taskHash
     const detail = (result.stderr || result.stdout || '').trim().split(/\r?\n/).find(Boolean) || `exit ${result.code}`;
     return { ok: false, error: redactSecrets(result.code === 0 ? 'HostLatch returned no readable decision' : detail).slice(0, 240), command: options.command };
   }
-  return {
-    ok: true,
-    decision,
-    riskScore: manifest.summary.riskScore ?? null,
-    findings: Array.isArray(manifest.findings) ? manifest.findings : [],
-    bySeverity: manifest.summary.bySeverity || {},
-    manifestId: manifest.manifestId || null,
-    version: manifest.tool?.version || null,
-    file,
-  };
+  // A HostLatch that printed the manifest without writing --output still leaves it where the output says it is.
+  if (!written) await fs.writeFile(file, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  await pruneManifests(path.dirname(file), taskPrefix);
+  return scanOf(manifest, file);
 }
 
 // The status the gate reports for a scan: a failed scan fails closed, because the owner switched the gate on.
@@ -95,7 +124,8 @@ export function formatTrustBlock(scan, failOn) {
     return { status, text: `${label}  trust handoff (HostLatch)  could not run: ${scan.error}\n  | Install HostLatch or set trustGate.command (for example: npx --yes github:iammurtaza53/hostlatch#v0.2.0).` };
   }
   const severities = Object.entries(scan.bySeverity).filter(([, count]) => count > 0).map(([name, count]) => `${name} ${count}`).join(', ');
-  const lines = [`${label}  trust handoff (HostLatch)  ${scan.decision} · risk ${scan.riskScore ?? '?'}/100 · ${scan.findings.length} finding(s)${severities ? ` (${severities})` : ''} · manifest ${scan.manifestId || 'n/a'}`];
+  const reused = scan.reusedAt ? ` · reused: tree and base unchanged since ${scan.reusedAt.slice(0, 19).replace('T', ' ')} UTC; --force rescans` : '';
+  const lines = [`${label}  trust handoff (HostLatch)  ${scan.decision} · risk ${scan.riskScore ?? '?'}/100 · ${scan.findings.length} finding(s)${severities ? ` (${severities})` : ''} · manifest ${scan.manifestId || 'n/a'}${reused}`];
   for (const finding of scan.findings.slice(0, MAX_FINDINGS_SHOWN)) {
     lines.push(redactSecrets(`  | [${String(finding.severity || '?').toUpperCase()}] ${finding.ruleId || '?'} ${finding.path || ''}: ${finding.title || ''}`));
   }
@@ -112,9 +142,11 @@ export function trustReviewReasons(scan) {
   return [`HostLatch ${scan.decision}${top.length ? `: ${top.join(', ')}` : ''}`];
 }
 
-export function trustStateOf(scan, at) {
+// The task-state record of a scan. `reuseKey` identifies the tree, base commit and command the scan was made for;
+// a failed scan has none, so it is always retried.
+export function trustStateOf(scan, at, reuseKey = null) {
   return scan.ok
-    ? { decision: scan.decision, riskScore: scan.riskScore, findings: scan.findings.length, manifestId: scan.manifestId, manifest: scan.file, at }
+    ? { decision: scan.decision, riskScore: scan.riskScore, findings: scan.findings.length, manifestId: scan.manifestId, manifest: scan.file, at, ...(reuseKey ? { reuseKey } : {}) }
     : { decision: 'error', error: scan.error, at };
 }
 

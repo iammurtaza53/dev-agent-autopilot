@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **The trust gate reuses an unchanged scan.** The same working tree against the same base commit, with the same HostLatch command, gets the same decision. So `dev-autopilot check` and `review-budget` reuse the last scan instead of running HostLatch again, and say so on the result line.
+  - A reused `block` still fails the check.
+  - A change to the tree, a new base commit, `check --force` or `leanloop.checks.reuseUnchangedPasses: false` rescans.
+  - A scan that couldn't run is never reused.
+- **Manifests are kept where the output says they are.** If HostLatch prints its manifest without writing `--output`, Autopilot saves it at the path the check output shows. Manifest names now include milliseconds, so two scans in the same second no longer overwrite each other. Only the newest ten manifests per task are kept.
+- Tests: 6 new tests, 221 in total.
+
 ## 0.4.2: HostLatch trust-handoff gate
 
 - **Optional trust gate** (`trustGate`, off by default). It runs [HostLatch](https://github.com/iammurtaza53/hostlatch) on the task branch. HostLatch finds agent-written changes that a trusted host could later execute with the developer's authority: package lifecycle scripts, IDE tasks, agent hooks and settings, MCP commands, CI workflows, Git attributes and dev containers. Autopilot runs HostLatch as an external command and only reads its JSON manifest.

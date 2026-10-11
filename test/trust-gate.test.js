@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { buildConfig, configProblems, main, ruleText } from '../src/cli.js';
+import { buildConfig, configProblems, main, ruleText, setClock } from '../src/cli.js';
 import { commandParts, formatTrustBlock, trustGateProblems, trustReviewReasons } from '../src/trust-gate.js';
 import { settingsBlock } from '../src/context.js';
 import { gitIn, tempRoot, useFakeCli, writeConfig } from './helpers.js';
@@ -136,6 +136,84 @@ test('an npx command runs HostLatch from its GitHub release', async (t) => {
   assert.deepEqual(call.args.slice(0, 4), ['--yes', 'github:iammurtaza53/hostlatch#v0.2.0', 'scan', root]);
 });
 
+test('an unchanged tree reuses the last decision; a change, a new base commit or --force rescans', async (t) => {
+  const root = await gatedProject(t);
+  const fake = useFakeCli(t, { results: { 'hostlatch scan': { stdout: manifest('allow') } } });
+  const out = captureStdout(t);
+  await main(['check', root]);
+  const { trust } = await readState(root);
+  assert.match(trust.reuseKey, /^[0-9a-f]{64}$/);
+  assert.equal(JSON.parse(await fs.readFile(trust.manifest, 'utf8')).summary.decision, 'allow', 'a manifest HostLatch only printed is saved where the output points');
+
+  await main(['check', root]);
+  await main(['review-budget', '--json', root]);
+  assert.equal(scans(fake).length, 1, 'check and review-budget reuse the scan of an unchanged tree');
+  assert.match(out(), /^PASS {2}trust handoff \(HostLatch\) {2}allow .*· reused: tree and base unchanged since \d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC; --force rescans$/m);
+
+  await fs.writeFile(path.join(root, 'app.js'), 'export const a = 3;\n', 'utf8');
+  await main(['check', root]);
+  assert.equal(scans(fake).length, 2, 'a changed tree rescans');
+
+  const tree = (await gitIn(root, ['rev-parse', 'main^{tree}'])).trim();
+  await gitIn(root, ['update-ref', 'refs/heads/main', (await gitIn(root, ['commit-tree', tree, '-p', 'main', '-m', 'base moved'])).trim()]);
+  await main(['check', root]);
+  assert.equal(scans(fake).length, 3, 'a new base commit rescans');
+
+  await main(['check', '--force', root]);
+  assert.equal(scans(fake).length, 4, '--force rescans');
+});
+
+test('a reused block still fails, and a scan that could not run is never reused', async (t) => {
+  await t.test('block', async (st) => {
+    const root = await gatedProject(st);
+    const fake = useFakeCli(st, { results: { 'hostlatch scan': { stdout: manifest('block', [lifecycle]) } } });
+    const out = captureStdout(st);
+    await main(['check', root]);
+    process.exitCode = 0;
+    await main(['check', root]);
+    assert.equal(scans(fake).length, 1);
+    assert.equal(process.exitCode, 1);
+    assert.match(out(), /^FAIL {2}trust handoff \(HostLatch\) {2}block .*· reused: /m);
+    assert.match(out(), /A person must review these activation paths before merge/);
+  });
+  await t.test('error', async (st) => {
+    const root = await gatedProject(st);
+    const fake = useFakeCli(st, { missing: ['hostlatch'] });
+    captureStdout(st);
+    await main(['check', root]);
+    await main(['check', root]);
+    assert.equal(scans(fake).length, 2);
+    assert.equal((await readState(root)).trust.reuseKey, undefined);
+  });
+  await t.test('reuse switched off', async (st) => {
+    const root = await gatedProject(st);
+    const config = JSON.parse(await fs.readFile(path.join(root, '.autopilot', 'config.json'), 'utf8'));
+    await writeConfig(root, { ...config, leanloop: { ...config.leanloop, checks: { reuseUnchangedPasses: false } } });
+    const fake = useFakeCli(st, { results: { 'hostlatch scan': { stdout: manifest('allow') } } });
+    captureStdout(st);
+    await main(['check', root]);
+    await main(['check', root]);
+    assert.equal(scans(fake).length, 2);
+  });
+});
+
+test('only the newest ten manifests of a task are kept', async (t) => {
+  const root = await gatedProject(t);
+  useFakeCli(t, { results: { 'hostlatch scan': { stdout: manifest('allow') } } });
+  captureStdout(t);
+  let now = Date.parse('2026-10-11T09:00:00.000Z');
+  setClock(() => new Date(now));
+  t.after(() => setClock(null));
+  for (let run = 0; run < 12; run += 1) {
+    now += 1000;
+    await main(['check', '--force', root]);
+  }
+  const dir = path.join(root, '.autopilot', 'runtime', 'trust');
+  const names = (await fs.readdir(dir)).sort();
+  assert.equal(names.length, 10);
+  assert.equal(path.basename((await readState(root)).trust.manifest), names.at(-1), 'the manifest the task state points to is kept');
+});
+
 test('a HostLatch finding gives the change the full review budget', async (t) => {
   const root = await gatedProject(t);
   const flagged = useFakeCli(t, { results: { 'hostlatch scan': { stdout: manifest('review', [task]) } } });
@@ -145,6 +223,7 @@ test('a HostLatch finding gives the change the full review budget', async (t) =>
   assert.equal(report.rounds, 2);
   assert.match(report.reasons[0], /^HostLatch review: HL-IDE-201 \.vscode\/tasks\.json/);
 
+  await fs.writeFile(path.join(root, 'app.js'), 'export const a = 3;\n', 'utf8');
   const clean = useFakeCli(t, { results: { 'hostlatch scan': { stdout: manifest('allow') } } });
   await main(['review-budget', '--json', root]);
   assert.equal(JSON.parse(clean.output.find((line) => line.startsWith('{'))).kind, 'small', 'a clean scan leaves the diff-based class alone');
